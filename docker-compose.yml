@@ -4,72 +4,31 @@ networks:
     external: true
 
 services:
-  postgres:
-    image: postgres:latest
-    networks:
-      - saaslocalnetwork
-    environment:
-      POSTGRES_PASSWORD: ${POSTGRESQL_DB_PASSWORD}
-    volumes:
-      - ./postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.9.2
-    networks:
-      - saaslocalnetwork
-    volumes:
-      - ./esdata1:/usr/share/elasticsearch/data
-      - ./elastic_backup:/opt/elasticsearch/backup
-    environment:
-      - xpack.security.transport.ssl.enabled=false
-      - xpack.security.http.ssl.enabled=false
-      - xpack.security.enabled=false
-      - path.repo=/opt/elasticsearch/backup
-      - discovery.type=single-node
-      - cluster.name=docker-cluster
-      - bootstrap.memory_lock=true
-      - "ES_JAVA_OPTS= -Xms2g -Xmx2g -Dlog4j2.formatMsgNoLookups=true"
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-
   taskservice:
     image: gcr.io/dagknows-images/taskservice:latest
     networks:
       - saaslocalnetwork
     command: ["python", "src/gateway.py"]
-    depends_on:
-      - postgres
-      - elasticsearch
     environment:
-      - PYTHONUNBUFFERED=1
       - ALLOW_DK_USER_INFO_HEADER=true
+      - COMMUNITY_URL=${COMMUNITY_URL}
+      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
       - DAGKNOWS_FORCE_TOKEN=${DAGKNOWS_FORCE_TOKEN}
-      - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
-      - POSTGRESQL_DB_PASSWORD=${POSTGRESQL_DB_PASSWORD}
-      - POSTGRESQL_DB_HOST=${POSTGRESQL_DB_HOST}
-      - POSTGRESQL_DB_PORT=${POSTGRESQL_DB_PORT}
-      - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_ORG_ID=${OPENAI_ORG_ID}
+      - DEFAULT_ORG=${DEFAULT_ORG}
+      - DISABLE_KNN=true
+      - ENFORCE_LOGIN=${ENFORCE_LOGIN}
       - FLASK_ENV=development
       - GEVENT_SUPPORT=True
       - MONKEY_PATCHING=True
-      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
-      - ALLOW_DK_USER_INFO_HEADER=true
-      - DEFAULT_ORG=${DEFAULT_ORG}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_ORG_ID=${OPENAI_ORG_ID}
+      - POSTGRESQL_DB_HOST=${POSTGRESQL_DB_HOST}
+      - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
+      - POSTGRESQL_DB_PASSWORD=${POSTGRESQL_DB_PASSWORD}
+      - POSTGRESQL_DB_PORT=${POSTGRESQL_DB_PORT}
+      - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
+      - PYTHONUNBUFFERED=1
       - SUPER_USER_ORG=${SUPER_USER_ORG}
-      - COMMUNITY_URL=${COMMUNITY_URL}
-      - ENFORCE_LOGIN=${ENFORCE_LOGIN}
-      - DISABLE_KNN=true
-    networks:
-      - localnetwork
 
   jobsched:
     image: gcr.io/dagknows-images/jobsched:latest
@@ -83,11 +42,11 @@ services:
     networks:
       - saaslocalnetwork
     environment:
-      - GEVENT_SUPPORT=True
       - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
       - FLASK_ENV=development
-      - VERBOSE=${VERBOSE}
+      - GEVENT_SUPPORT=True
       - PYTHONUNBUFFERED=1
+      - VERBOSE=${VERBOSE}
     command: ["python", "src/proxy_sse.py"]
 
   conv-sse:
@@ -95,21 +54,21 @@ services:
     networks:
       - saaslocalnetwork
     environment:
-      - GEVENT_SUPPORT=True
-      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
-      - WAIT_COMMAND=[ $$(curl --write-out %{http_code} --silent --output /dev/null http://elasticsearch:9200/_cat/health?h=st) = 200 ]
-      - WAIT_SLEEP=10
-      - WAIT_LOOPS=30
-      - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
-      - POSTGRESQL_DB_PASSWORD=${POSTGRESQL_DB_PASSWORD}
-      - POSTGRESQL_DB_HOST=${POSTGRESQL_DB_HOST}
-      - POSTGRESQL_DB_PORT=${POSTGRESQL_DB_PORT}
-      - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
-      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER}
-      - FLASK_ENV=development
       - APP_SECRET_KEY=${APP_SECRET_KEY}
-      - VERBOSE=${VERBOSE}
+      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
+      - FLASK_ENV=development
+      - GEVENT_SUPPORT=True
+      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER}
+      - POSTGRESQL_DB_HOST=${POSTGRESQL_DB_HOST}
+      - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
+      - POSTGRESQL_DB_PASSWORD=${POSTGRESQL_DB_PASSWORD}
+      - POSTGRESQL_DB_PORT=${POSTGRESQL_DB_PORT}
+      - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
       - PYTHONUNBUFFERED=1
+      - VERBOSE=${VERBOSE}
+      - WAIT_COMMAND=[ $$(curl --write-out %{http_code} --silent --output /dev/null http://elasticsearch:9200/_cat/health?h=st) = 200 ]
+      - WAIT_LOOPS=30
+      - WAIT_SLEEP=10
     command: ["python", "src/conv_sse.py"]
 
   req-router:
@@ -117,62 +76,52 @@ services:
     networks:
       - saaslocalnetwork
     command: ["sh", "src/wait-for-it.sh"]
-    depends_on:
-      - postgres
-      - elasticsearch
     volumes:
       - ./tls:/usr/src/app/tls
       - /etc/letsencrypt:/etc/letsencrypt
     environment:
-      - MONKEY_PATCHING=True
-      - ENFORCE_LOGIN=${ENFORCE_LOGIN}
-      - GEVENT_SUPPORT=True
-      - FLASK_ENV=development
-      - WAIT_COMMAND=[ $$(curl --write-out %{http_code} --silent --output /dev/null http://elasticsearch:9200/_cat/health?h=st) = 200 ]
-      - WAIT_SLEEP=10
-      - WAIT_LOOPS=30
-      - DAGKNOWS_URL=${DAGKNOWS_URL}
-      - GEVENT_SUPPORT=True
-      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
-      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
-      - DEFAULT_PAGE_SIZE=${DEFAULT_PAGE_SIZE}
+      - APP_SECRET_KEY=${APP_SECRET_KEY}
       - COMMUNITY_URL=${COMMUNITY_URL}
       - COMPOSE_HTTP_TIMEOUT=300
-      - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
-      - POSTGRESQL_DB_PASSWORD=${POSTGRESQL_DB_PASSWORD}
-      - POSTGRESQL_DB_HOST=${POSTGRESQL_DB_HOST}
-      - POSTGRESQL_DB_PORT=${POSTGRESQL_DB_PORT}
-      - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
+      - CUSTOMER_AD_EMAIL_ATTR=${CUSTOMER_AD_EMAIL_ATTR}
+      - CUSTOMER_AD_SEARCH_BASE_OU=${CUSTOMER_AD_SEARCH_BASE_OU}
+      - CUSTOMER_AD_SERVER_URI=${CUSTOMER_AD_SERVER_URI}
+      - CUSTOMER_AD_SERVICE_PASSWORD=${CUSTOMER_AD_SERVICE_PASSWORD}
+      - CUSTOMER_AD_SERVICE_USERNAME=${CUSTOMER_AD_SERVICE_USERNAME}
+      - CUSTOMER_AD_USERNAME_ATTR=${CUSTOMER_AD_USERNAME_ATTR}
+      - CUSTOMER_AD_USE_TLS=${CUSTOMER_AD_USE_TLS}
+      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
+      - DAGKNOWS_URL=${DAGKNOWS_URL}
+      - DEFAULT_PAGE_SIZE=${DEFAULT_PAGE_SIZE}
+      - ENFORCE_LOGIN=${ENFORCE_LOGIN}
+      - FLASK_ENV=development
+      - GEVENT_SUPPORT=True
+      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER}
+      - MAIL_PASSWORD=${MAIL_PASSWORD}
       - MAIL_SERVER=${MAIL_SERVER}
       - MAIL_USERNAME=${MAIL_USERNAME}
-      - MAIL_PASSWORD=${MAIL_PASSWORD}
-      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER}
-      - FLASK_ENV=development
-      - DAGKNOWS_URL=${DAGKNOWS_URL}
-      - APP_SECRET_KEY=${APP_SECRET_KEY}
-      - api_key=${api_key}
-      - SUPER_USER=${SUPER_USER}
+      - MONKEY_PATCHING=True
+      - NO_SSL=${NO_SSL}
+      - POSTGRESQL_DB_HOST=${POSTGRESQL_DB_HOST}
+      - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
+      - POSTGRESQL_DB_PASSWORD=${POSTGRESQL_DB_PASSWORD}
+      - POSTGRESQL_DB_PORT=${POSTGRESQL_DB_PORT}
+      - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
+      - PYTHONUNBUFFERED=1
       - SUPER_PASSWORD=${SUPER_PASSWORD}
+      - SUPER_USER=${SUPER_USER}
       - SUPER_USER_FIRSTNAME=${SUPER_USER_FIRSTNAME}
       - SUPER_USER_LASTNAME=${SUPER_USER_LASTNAME}
       - SUPER_USER_ORG=${SUPER_USER_ORG}
-      - NO_SSL=${NO_SSL}
-      - CUSTOMER_AD_SERVER_URI=${CUSTOMER_AD_SERVER_URI}
-      - CUSTOMER_AD_SERVICE_USERNAME=${CUSTOMER_AD_SERVICE_USERNAME}
-      - CUSTOMER_AD_SERVICE_PASSWORD=${CUSTOMER_AD_SERVICE_PASSWORD}
-      - CUSTOMER_AD_SEARCH_BASE_OU=${CUSTOMER_AD_SEARCH_BASE_OU}
-      - CUSTOMER_AD_USERNAME_ATTR=${CUSTOMER_AD_USERNAME_ATTR}
-      - CUSTOMER_AD_EMAIL_ATTR=${CUSTOMER_AD_EMAIL_ATTR}
-      - CUSTOMER_AD_USE_TLS=${CUSTOMER_AD_USE_TLS}
       - SUPPORT_AD_AUTHENTICATION=${SUPPORT_AD_AUTHENTICATION}
-      - INFLUXDB_TOKEN_PYTHON=${INFLUXDB_TOKEN_PYTHON}
-      - INFLUXDB_METRICS_HOST=${INFLUXDB_METRICS_HOST}
-      - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
       - VERBOSE=${VERBOSE}
-      - PYTHONUNBUFFERED=1
+      - WAIT_COMMAND=[ $$(curl --write-out %{http_code} --silent --output /dev/null http://elasticsearch:9200/_cat/health?h=st) = 200 ]
+      - WAIT_LOOPS=30
+      - WAIT_SLEEP=10
+      - api_key=${api_key}
 
   conv-mgr:
-    image: gcr.io/dagknows-images/conv-mgr:latest
+    image: gcr.io/dagknows-images/conv_mgr:latest
     networks:
       - saaslocalnetwork
     environment:
@@ -197,9 +146,6 @@ services:
     image: gcr.io/dagknows-images/settings:latest
     networks:
       - saaslocalnetwork
-    depends_on:
-      - postgres
-      - elasticsearch
     environment:
       - MONKEY_PATCHING=True
       - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
@@ -235,14 +181,12 @@ services:
       - req-router
       - dagknows-nuxt
       - wsfe
-      - conv_sse
-      - proxy_sse
+      - conv-sse
+      - proxy-sse
     ports:
       - 443:443
       - 80:80
       - 24678:24678
-    networks:
-      - localnetwork
 
   dagknows-nuxt:
     image: gcr.io/dagknows-images/dagknows_nuxt:latest

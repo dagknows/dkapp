@@ -6,22 +6,21 @@ logs:
 	docker-compose logs -f --tail 100
 
 dblogs:
-	docker-compose logs -f db-docker-compose.yml --tail 100
-
-down:
-	sudo docker-compose down --remove-orphans 
+	docker-compose -f db-docker-compose.yml logs -f --tail 100
 
 build: down
-	sudo chmod -R a+rwx postgres-data
 	docker-compose build --no-cache
+
+down:
+	docker-compose down --remove-orphans 
 
 update: down pull build
 	echo "App updated.  Bring it up again with `make up logs`"
 
-up: down dbdirs ensurenetworks
+up: dbdirs ensurenetworks
 	docker-compose up -d
 
-rundb: dbdirs ensurenetworks
+updb: dbdirs ensurenetworks
 	docker-compose -f db-docker-compose.yml down --remove-orphans
 	docker-compose -f db-docker-compose.yml up -d
 
@@ -36,3 +35,16 @@ backups:
 
 dbdirs:
 	mkdir -p postgres-data esdata1 elastic_backup
+	sudo chmod -R a+rwx postgres-data
+
+pull:
+	docker pull gcr.io/dagknows-images/wsfe:latest
+	docker pull gcr.io/dagknows-images/jobsched:latest
+	docker pull gcr.io/dagknows-images/apigateway:latest
+	docker pull gcr.io/dagknows-images/conv_mgr:latest
+	docker pull gcr.io/dagknows-images/conv_sse:latest
+	docker pull gcr.io/dagknows-images/proxy_sse:latest
+	docker pull gcr.io/dagknows-images/settings:latest
+	docker pull gcr.io/dagknows-images/taskservice:latest
+	docker pull gcr.io/dagknows-images/req_router:latest
+	docker pull gcr.io/dagknows-images/dagknows_nuxt:latest

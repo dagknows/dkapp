@@ -1,4 +1,7 @@
 # Byte-compiled / optimized / DLL files
+esdata1
+elastic_backup
+postgres-data
 __pycache__/
 *.py[cod]
 *$py.class
