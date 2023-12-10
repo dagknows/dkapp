@@ -1,0 +1,44 @@
+version: '3'
+networks:
+  saaslocalnetwork:
+    external: true
+
+services:
+  postgres:
+    image: postgres:latest
+    ports:
+      - 5432:5432
+    networks:
+      - saaslocalnetwork
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRESQL_DB_PASSWORD}
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.9.2
+    volumes:
+      - ./esdata1:/usr/share/elasticsearch/data
+      - ./elastic_backup:/opt/elasticsearch/backup
+    ports:
+      - 9200:9200
+    networks:
+      - saaslocalnetwork
+    environment:
+      - xpack.security.transport.ssl.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.enabled=false
+      - path.repo=/opt/elasticsearch/backup
+      - discovery.type=single-node
+      - cluster.name=docker-cluster
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS= -Xms2g -Xmx2g -Dlog4j2.formatMsgNoLookups=true"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
