@@ -12,17 +12,16 @@ build: down
 	docker-compose build --no-cache
 
 down:
-	docker-compose down --remove-orphans 
+	docker-compose -f docker-compose.yml down --remove-orphans
 
 update: down pull build
 	echo "App updated.  Bring it up again with `make updb up logs`"
 
 up: ensurenetworks
-	docker-compose -f docker-compose.yml down --remove-orphans
 	docker-compose -f docker-compose.yml up -d
 
 ensurenetworks:
-	-docker network create saaslocalnetwork
+	-@docker network create saaslocalnetwork
 
 pull:
 	docker pull gcr.io/dagknows-images/wsfe:latest
