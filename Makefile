@@ -11,6 +11,8 @@ dblogs:
 build: down
 	docker-compose build --no-cache
 
+restart: down updb up logs
+
 down:
 	docker-compose -f docker-compose.yml down --remove-orphans
 
