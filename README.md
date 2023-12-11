@@ -19,7 +19,7 @@ apt-get install -y docker.io docker-compose unzip python-pip3
 1. Checkout this repo
 
 ```
-git checkout https://github.com/dagknows/dkapp.git
+git clone https://github.com/dagknows/dkapp.git
 ```
 
 2. Start the app

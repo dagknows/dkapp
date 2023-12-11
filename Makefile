@@ -29,7 +29,7 @@ up: ensurenetworks
 ensurenetworks:
 	-@docker network create saaslocalnetwork
 
-pull:
+pull: prepare
 	docker pull gcr.io/dagknows-images/wsfe:latest
 	docker pull gcr.io/dagknows-images/jobsched:latest
 	docker pull gcr.io/dagknows-images/apigateway:latest
