@@ -11,7 +11,7 @@ On prem version of the SaaS DagKnows app
 
 ```
 apt-get update
-apt-get install -y docker.io docker-compose unzip python-pip3
+apt-get install -y make docker.io docker-compose unzip python-pip3
 ```
 
 ## Instructions
