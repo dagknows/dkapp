@@ -41,7 +41,7 @@ updb: dbdirs ensurenetworks
 
 dbdirs:
 	mkdir -p postgres-data esdata1 elastic_backup
-	sudo chmod -R a+rwx postgres-data
+	sudo chmod -R a+rwx postgres-data esdata1 elastic_backup
 
 backups:
 	mkdir -p .backups/${DATE_SUFFIX}

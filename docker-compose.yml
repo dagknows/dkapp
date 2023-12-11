@@ -174,9 +174,9 @@ services:
     networks:
       - saaslocalnetwork
     volumes:
-      - ./nginx.nossl.conf:/etc/nginx/nginx.conf:ro
-      - ./sample-server.key:/root/ssl/server.key
-      - ./sample-server.crt:/root/ssl/server.crt
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./sample-selfsigned.key:/root/ssl/server.key
+      - ./sample-selfsigned.crt:/root/ssl/server.crt
     depends_on:
       - req-router
       - dagknows-nuxt
