@@ -5,6 +5,10 @@ DATAROOT=.
 logs:
 	docker-compose logs -f --tail 100
 
+prepare:
+	sudo apt-get update
+	sudo apt-get install -y docker.io docker-compose unzip python-pip3
+
 dblogs:
 	docker-compose -f db-docker-compose.yml logs -f --tail 100
 
