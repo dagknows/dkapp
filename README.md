@@ -1,18 +1,22 @@
 # dkapp
 On prem version of the SaaS DagKnows app
 
-## Instructions
+## Requirements
 
-1. Requirements
+### Instance
+* 16 GB Memory
+* 50 GB Storage
 
-Install docker:
+### Packages
 
 ```
 apt-get update
-apt-get install -y docker.io docker-compose
+apt-get install -y docker.io docker-compose unzip python-pip3
 ```
 
-2. Checkout this repo
+## Instructions
+
+1. Checkout this repo
 
 ```
 git checkout https://github.com/dagknows/dkapp.git
