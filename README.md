@@ -25,8 +25,16 @@ apt-get install -y make
 make prepare
 ```
 
-3. Start the app
+3. Ensure Docker is Started
+
+Ubuntu:
 
 ```
-make restart
+sudo systemctl restart docker
+```
+
+4. Start the app
+
+```
+sudo make restart
 ```
