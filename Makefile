@@ -7,7 +7,7 @@ logs:
 
 prepare:
 	sudo apt-get update
-	sudo apt-get install -y docker.io docker-compose unzip python-pip3
+	sudo apt-get install -y docker.io docker-compose unzip python3-pip
 
 dblogs:
 	docker-compose -f db-docker-compose.yml logs -f --tail 100
