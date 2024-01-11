@@ -7,7 +7,7 @@ logs:
 
 prepare:
 	sudo apt-get update
-	sudo apt-get install -y make docker.io docker docker-compose unzip python3-pip
+	sudo apt-get install -y make docker.io docker docker-compose unzip python3-pip docker-compose-v2
 	echo "Installing Docker Repos..."
 	sudo apt-get install ca-certificates curl gnupg
 	sudo install -m 0755 -d /etc/apt/keyrings
