@@ -12,6 +12,8 @@ prepare:
 	sudo apt-get install ca-certificates curl gnupg
 	sudo install -m 0755 -d /etc/apt/keyrings
 	curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+	echo "Adding user to docker user group..."
+	sudo usermod -aG docker ${USER}
 	sudo chmod a+r /etc/apt/keyrings/docker.gpg
 	echo "Adding the repository to Apt sources..."
 
@@ -20,8 +22,6 @@ p2:
 		"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
 		$(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
 		sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-	echo "Adding user to docker user group..."
-	sudo usermod -aG docker ${USER}
 
 build: down
 	docker compose build --no-cache
