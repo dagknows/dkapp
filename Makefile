@@ -25,23 +25,23 @@ build: down
 	docker compose build --no-cache
 
 dblogs:
-	docker compose -f db-docker compose.yml logs -f --tail 100
+	docker compose -f db-docker-compose.yml logs -f --tail 100
 
 restart: down updb up logs
 
 down:
-	docker compose -f docker compose.yml down --remove-orphans
+	docker compose down --remove-orphans
 
 update: down pull build
 	echo "App updated.  Bring it up again with `make updb up logs`"
 
 up: ensurenetworks
-	docker compose -f docker compose.yml up -d
+	docker compose -f docker-compose.yml up -d
 
 ensurenetworks:
 	-@docker network create saaslocalnetwork
 
-pull: prepare
+pull:
 	docker pull gcr.io/dagknows-images/wsfe:latest
 	docker pull gcr.io/dagknows-images/jobsched:latest
 	docker pull gcr.io/dagknows-images/apigateway:latest
@@ -54,8 +54,8 @@ pull: prepare
 	docker pull gcr.io/dagknows-images/dagknows_nuxt:latest
 
 updb: dbdirs ensurenetworks
-	docker compose -f db-docker compose.yml down --remove-orphans
-	docker compose -f db-docker compose.yml up -d
+	docker compose -f db-docker-compose.yml down --remove-orphans
+	docker compose -f db-docker-compose.yml up -d
 
 dbdirs:
 	mkdir -p postgres-data esdata1 elastic_backup
