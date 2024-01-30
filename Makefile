@@ -48,8 +48,6 @@ pull:
 	docker pull gcr.io/dagknows-images/jobsched:latest
 	docker pull gcr.io/dagknows-images/apigateway:latest
 	docker pull gcr.io/dagknows-images/conv_mgr:latest
-	docker pull gcr.io/dagknows-images/conv_sse:latest
-	docker pull gcr.io/dagknows-images/proxy_sse:latest
 	docker pull gcr.io/dagknows-images/settings:latest
 	docker pull gcr.io/dagknows-images/taskservice:latest
 	docker pull gcr.io/dagknows-images/req_router:latest

@@ -4,18 +4,6 @@ networks:
     external: true
 
 services:
-  proxy-sse:
-    image: gcr.io/dagknows-images/proxy_sse:latest
-    networks:
-      - saaslocalnetwork
-    environment:
-      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
-      - FLASK_ENV=development
-      - GEVENT_SUPPORT=True
-      - PYTHONUNBUFFERED=1
-      - VERBOSE=${VERBOSE}
-    command: ["python", "src/proxy_sse.py"]
-
   req-router:
     image: gcr.io/dagknows-images/req_router:latest
     networks:
@@ -103,28 +91,6 @@ services:
       - GEVENT_SUPPORT=True
     command: ["python", "src/settings.py"]
 
-  conv-sse:
-    image: gcr.io/dagknows-images/conv_sse:latest
-    networks:
-      - saaslocalnetwork
-    environment:
-      - APP_SECRET_KEY=${APP_SECRET_KEY}
-      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
-      - FLASK_ENV=development
-      - GEVENT_SUPPORT=True
-      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER}
-      - POSTGRESQL_DB_HOST=${POSTGRESQL_DB_HOST}
-      - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
-      - POSTGRESQL_DB_PASSWORD=${POSTGRESQL_DB_PASSWORD}
-      - POSTGRESQL_DB_PORT=${POSTGRESQL_DB_PORT}
-      - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
-      - PYTHONUNBUFFERED=1
-      - VERBOSE=${VERBOSE}
-      - WAIT_COMMAND=[ $$(curl --write-out %{http_code} --silent --output /dev/null http://elasticsearch:9200/_cat/health?h=st) = 200 ]
-      - WAIT_LOOPS=30
-      - WAIT_SLEEP=10
-    command: ["python", "src/conv_sse.py"]
-
   jobsched:
     image: gcr.io/dagknows-images/jobsched:latest
     networks:
@@ -190,8 +156,6 @@ services:
       - req-router
       - dagknows-nuxt
       - wsfe
-      - conv-sse
-      - proxy-sse
     ports:
       - 443:443
       - 80:80
