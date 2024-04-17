@@ -51,6 +51,7 @@ services:
       - WAIT_COMMAND=[ $$(curl --write-out %{http_code} --silent --output /dev/null http://elasticsearch:9200/_cat/health?h=st) = 200 ]
       - WAIT_LOOPS=30
       - WAIT_SLEEP=10
+      - ENFORCE_SECURE_COOKIE=${ENFORCE_SECURE_COOKIE}
       - api_key=${api_key}
 
   conv-mgr:
@@ -59,6 +60,9 @@ services:
       - saaslocalnetwork
     environment:
       - DAGKNOWS_WSFE_URL=${DAGKNOWS_WSFE_URL}
+      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
+      - DAGKNOWS_URL=${DAGKNOWS_URL}
+      - GEVENT_SUPPORT=True
       - PYTHONUNBUFFERED=1
 
   apigateway:
@@ -90,6 +94,18 @@ services:
       - PYTHONUNBUFFERED=1
       - GEVENT_SUPPORT=True
     command: ["python", "src/settings.py"]
+  wsfe:
+    image: gcr.io/dagknows-images/wsfe:latest
+    restart: unless-stopped
+    networks:
+      - saaslocalnetwork
+    environment:
+      - APP_SECRET_KEY=${APP_SECRET_KEY}
+      - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
+      - POSTGRESQL_DB_PASSWORD=${POSTGRESQL_DB_PASSWORD}
+      - POSTGRESQL_DB_HOST=${POSTGRESQL_DB_HOST}
+      - POSTGRESQL_DB_PORT=${POSTGRESQL_DB_PORT}
+      - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
 
   jobsched:
     image: gcr.io/dagknows-images/jobsched:latest
@@ -103,17 +119,6 @@ services:
       - POSTGRESQL_DB_PORT=${POSTGRESQL_DB_PORT}
       - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
 
-  wsfe:
-    image: gcr.io/dagknows-images/wsfe:latest
-    networks:
-      - saaslocalnetwork
-    environment:
-      - APP_SECRET_KEY=${APP_SECRET_KEY}
-      - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
-      - POSTGRESQL_DB_PASSWORD=${POSTGRESQL_DB_PASSWORD}
-      - POSTGRESQL_DB_HOST=${POSTGRESQL_DB_HOST}
-      - POSTGRESQL_DB_PORT=${POSTGRESQL_DB_PORT}
-      - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
 
   taskservice:
     image: gcr.io/dagknows-images/taskservice:latest
@@ -129,7 +134,6 @@ services:
       - DAGKNOWS_FORCE_TOKEN=${DAGKNOWS_FORCE_TOKEN}
       - DAGKNOWS_WSFE_URL=${DAGKNOWS_WSFE_URL}
       - DEFAULT_ORG=${DEFAULT_ORG}
-      - DISABLE_KNN=true
       - ENFORCE_LOGIN=${ENFORCE_LOGIN}
       - FLASK_ENV=development
       - GEVENT_SUPPORT=True
