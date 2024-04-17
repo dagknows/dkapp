@@ -45,6 +45,7 @@ ensurenetworks:
 
 pull:
 	docker pull gcr.io/dagknows-images/wsfe:latest
+	docker pull gcr.io/dagknows-images/ansi_processing:latest
 	docker pull gcr.io/dagknows-images/jobsched:latest
 	docker pull gcr.io/dagknows-images/apigateway:latest
 	docker pull gcr.io/dagknows-images/conv_mgr:latest
