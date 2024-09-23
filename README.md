@@ -20,8 +20,8 @@ Ubuntu:
 
 ```
 cd dkapp
-apt-get update
-apt-get install -y make
+sudo apt update && sudo apt upgrade -y
+sudo apt-get install -y make
 make prepare
 ```
 

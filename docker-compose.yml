@@ -4,73 +4,6 @@ networks:
     external: true
 
 services:
-  taskservice:
-    image: gcr.io/dagknows-images/taskservice:latest
-    networks:
-      - saaslocalnetwork
-    command: ["python", "src/gateway.py"]
-    environment:
-      - ALLOW_DK_USER_INFO_HEADER=true
-      - COMMUNITY_URL=${COMMUNITY_URL}
-      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
-      - DAGKNOWS_FORCE_TOKEN=${DAGKNOWS_FORCE_TOKEN}
-      - DEFAULT_ORG=${DEFAULT_ORG}
-      - DISABLE_KNN=true
-      - ENFORCE_LOGIN=${ENFORCE_LOGIN}
-      - FLASK_ENV=development
-      - GEVENT_SUPPORT=True
-      - MONKEY_PATCHING=True
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_ORG_ID=${OPENAI_ORG_ID}
-      - POSTGRESQL_DB_HOST=${POSTGRESQL_DB_HOST}
-      - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
-      - POSTGRESQL_DB_PASSWORD=${POSTGRESQL_DB_PASSWORD}
-      - POSTGRESQL_DB_PORT=${POSTGRESQL_DB_PORT}
-      - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
-      - PYTHONUNBUFFERED=1
-      - SUPER_USER_ORG=${SUPER_USER_ORG}
-
-  jobsched:
-    image: gcr.io/dagknows-images/jobsched:latest
-    networks:
-      - saaslocalnetwork
-    environment:
-      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
-
-  proxy-sse:
-    image: gcr.io/dagknows-images/proxy_sse:latest
-    networks:
-      - saaslocalnetwork
-    environment:
-      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
-      - FLASK_ENV=development
-      - GEVENT_SUPPORT=True
-      - PYTHONUNBUFFERED=1
-      - VERBOSE=${VERBOSE}
-    command: ["python", "src/proxy_sse.py"]
-
-  conv-sse:
-    image: gcr.io/dagknows-images/conv_sse:latest
-    networks:
-      - saaslocalnetwork
-    environment:
-      - APP_SECRET_KEY=${APP_SECRET_KEY}
-      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
-      - FLASK_ENV=development
-      - GEVENT_SUPPORT=True
-      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER}
-      - POSTGRESQL_DB_HOST=${POSTGRESQL_DB_HOST}
-      - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
-      - POSTGRESQL_DB_PASSWORD=${POSTGRESQL_DB_PASSWORD}
-      - POSTGRESQL_DB_PORT=${POSTGRESQL_DB_PORT}
-      - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
-      - PYTHONUNBUFFERED=1
-      - VERBOSE=${VERBOSE}
-      - WAIT_COMMAND=[ $$(curl --write-out %{http_code} --silent --output /dev/null http://elasticsearch:9200/_cat/health?h=st) = 200 ]
-      - WAIT_LOOPS=30
-      - WAIT_SLEEP=10
-    command: ["python", "src/conv_sse.py"]
-
   req-router:
     image: gcr.io/dagknows-images/req_router:latest
     networks:
@@ -118,6 +51,7 @@ services:
       - WAIT_COMMAND=[ $$(curl --write-out %{http_code} --silent --output /dev/null http://elasticsearch:9200/_cat/health?h=st) = 200 ]
       - WAIT_LOOPS=30
       - WAIT_SLEEP=10
+      - ENFORCE_SECURE_COOKIE=${ENFORCE_SECURE_COOKIE}
       - api_key=${api_key}
 
   conv-mgr:
@@ -126,6 +60,9 @@ services:
       - saaslocalnetwork
     environment:
       - DAGKNOWS_WSFE_URL=${DAGKNOWS_WSFE_URL}
+      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
+      - DAGKNOWS_URL=${DAGKNOWS_URL}
+      - GEVENT_SUPPORT=True
       - PYTHONUNBUFFERED=1
 
   apigateway:
@@ -153,12 +90,13 @@ services:
       - SUPER_USER_ORG=${SUPER_USER_ORG}
       - DAGKNOWS_URL=${DAGKNOWS_URL}
       - COMMUNITY_URL=${COMMUNITY_URL}
+      - COMMUNITY=${COMMUNITY}
       - PYTHONUNBUFFERED=1
       - GEVENT_SUPPORT=True
     command: ["python", "src/settings.py"]
-
   wsfe:
     image: gcr.io/dagknows-images/wsfe:latest
+    restart: unless-stopped
     networks:
       - saaslocalnetwork
     environment:
@@ -168,6 +106,47 @@ services:
       - POSTGRESQL_DB_HOST=${POSTGRESQL_DB_HOST}
       - POSTGRESQL_DB_PORT=${POSTGRESQL_DB_PORT}
       - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
+
+  jobsched:
+    image: gcr.io/dagknows-images/jobsched:latest
+    networks:
+      - saaslocalnetwork
+    environment:
+      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
+      - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
+      - POSTGRESQL_DB_PASSWORD=${POSTGRESQL_DB_PASSWORD}
+      - POSTGRESQL_DB_HOST=${POSTGRESQL_DB_HOST}
+      - POSTGRESQL_DB_PORT=${POSTGRESQL_DB_PORT}
+      - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
+
+
+  taskservice:
+    image: gcr.io/dagknows-images/taskservice:latest
+    networks:
+      - saaslocalnetwork
+    command: ["python", "src/gateway.py"]
+    environment:
+      - ALLOW_DK_USER_INFO_HEADER=true
+      - COMMUNITY_URL=${COMMUNITY_URL}
+      - COMMUNITY=${COMMUNITY}
+      - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
+      - DAGKNOWS_PROXY_URL=http://wsfe:4446/proxies
+      - DAGKNOWS_FORCE_TOKEN=${DAGKNOWS_FORCE_TOKEN}
+      - DAGKNOWS_WSFE_URL=${DAGKNOWS_WSFE_URL}
+      - DEFAULT_ORG=${DEFAULT_ORG}
+      - ENFORCE_LOGIN=${ENFORCE_LOGIN}
+      - FLASK_ENV=development
+      - GEVENT_SUPPORT=True
+      - MONKEY_PATCHING=True
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_ORG_ID=${OPENAI_ORG_ID}
+      - POSTGRESQL_DB_HOST=${POSTGRESQL_DB_HOST}
+      - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
+      - POSTGRESQL_DB_PASSWORD=${POSTGRESQL_DB_PASSWORD}
+      - POSTGRESQL_DB_PORT=${POSTGRESQL_DB_PORT}
+      - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
+      - PYTHONUNBUFFERED=1
+      - SUPER_USER_ORG=${SUPER_USER_ORG}
 
   nginx:
     image: nginx:latest
@@ -181,8 +160,6 @@ services:
       - req-router
       - dagknows-nuxt
       - wsfe
-      - conv-sse
-      - proxy-sse
     ports:
       - 443:443
       - 80:80
