@@ -5,7 +5,7 @@ networks:
 
 services:
   req-router:
-    image: gcr.io/dagknows-images/req_router:latest
+    image: public.ecr.aws/n5k3t9x2/req_router:latest
     networks:
       - saaslocalnetwork
     command: ["sh", "src/wait-for-it.sh"]
@@ -55,7 +55,7 @@ services:
       - api_key=${api_key}
 
   conv-mgr:
-    image: gcr.io/dagknows-images/conv_mgr:latest
+    image: public.ecr.aws/n5k3t9x2/conv_mgr:latest
     networks:
       - saaslocalnetwork
     environment:
@@ -66,7 +66,7 @@ services:
       - PYTHONUNBUFFERED=1
 
   apigateway:
-    image: gcr.io/dagknows-images/apigateway:latest
+    image: public.ecr.aws/n5k3t9x2/apigateway:latest
     networks:
       - saaslocalnetwork
     environment:
@@ -75,12 +75,12 @@ services:
     restart: on-failure
 
   ansi-processing:
-    image: gcr.io/dagknows-images/ansi_processing:latest
+    image: public.ecr.aws/n5k3t9x2/ansi_processing:latest
     networks:
       - saaslocalnetwork
 
   settings:
-    image: gcr.io/dagknows-images/settings:latest
+    image: public.ecr.aws/n5k3t9x2/settings:latest
     networks:
       - saaslocalnetwork
     environment:
@@ -95,7 +95,7 @@ services:
       - GEVENT_SUPPORT=True
     command: ["python", "src/settings.py"]
   wsfe:
-    image: gcr.io/dagknows-images/wsfe:latest
+    image: public.ecr.aws/n5k3t9x2/wsfe:latest
     restart: unless-stopped
     networks:
       - saaslocalnetwork
@@ -108,7 +108,7 @@ services:
       - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
 
   jobsched:
-    image: gcr.io/dagknows-images/jobsched:latest
+    image: public.ecr.aws/n5k3t9x2/jobsched:latest
     networks:
       - saaslocalnetwork
     environment:
@@ -121,7 +121,7 @@ services:
 
 
   taskservice:
-    image: gcr.io/dagknows-images/taskservice:latest
+    image: public.ecr.aws/n5k3t9x2/taskservice:latest
     networks:
       - saaslocalnetwork
     command: ["python", "src/gateway.py"]
@@ -166,7 +166,7 @@ services:
       - 24678:24678
 
   dagknows-nuxt:
-    image: gcr.io/dagknows-images/dagknows_nuxt:latest
+    image: public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest
     networks:
       - saaslocalnetwork
     command: npm run serve
