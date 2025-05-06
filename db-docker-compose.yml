@@ -5,7 +5,7 @@ networks:
 
 services:
   postgres:
-    image: postgres:latest
+    image: postgres:16.5
     networks:
       - saaslocalnetwork
     environment:
