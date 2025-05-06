@@ -161,9 +161,7 @@ services:
       - dagknows-nuxt
       - wsfe
     ports:
-      - 443:443
       - 80:80
-      - 24678:24678
 
   dagknows-nuxt:
     image: gcr.io/dagknows-images/dagknows_nuxt:latest

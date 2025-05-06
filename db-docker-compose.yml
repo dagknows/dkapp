@@ -23,8 +23,6 @@ services:
     volumes:
       - ./esdata1:/usr/share/elasticsearch/data
       - ./elastic_backup:/opt/elasticsearch/backup
-    ports:
-      - 9200:9200
     networks:
       - saaslocalnetwork
     environment:
