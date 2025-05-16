@@ -162,6 +162,7 @@ services:
       - wsfe
     ports:
       - 80:80
+      - 443:443
 
   dagknows-nuxt:
     image: public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest
