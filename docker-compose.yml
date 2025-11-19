@@ -147,6 +147,7 @@ services:
       - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
       - PYTHONUNBUFFERED=1
       - SUPER_USER_ORG=${SUPER_USER_ORG}
+      - BOOTSTRAP_TASKS=True
 
   nginx:
     image: nginx:latest
