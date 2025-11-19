@@ -44,7 +44,7 @@ dblogs:
 restart: down updb up logs
 
 down:
-	docker compose down --remove-orphans
+	docker compose -f docker-compose.yml down --remove-orphans
 
 update: down pull build
 	echo "App updated.  Bring it up again with `make updb up logs`"
