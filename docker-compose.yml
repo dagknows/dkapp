@@ -1,4 +1,3 @@
-version: '3'
 networks:
   saaslocalnetwork:
     external: true
@@ -113,11 +112,6 @@ services:
     restart: unless-stopped
     networks:
       - saaslocalnetwork
-    depends_on:
-      req-router:
-        condition: service_started
-      settings:
-        condition: service_started
     environment:
       - APP_SECRET_KEY=${APP_SECRET_KEY}
       - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
@@ -151,8 +145,6 @@ services:
     command: ["python", "src/gateway.py"]
     depends_on:
       wsfe:
-        condition: service_started
-      settings:
         condition: service_started
     environment:
       - ALLOW_DK_USER_INFO_HEADER=true
