@@ -12,6 +12,9 @@ services:
     volumes:
       - ./tls:/usr/src/app/tls
       - /etc/letsencrypt:/etc/letsencrypt
+    depends_on:
+      taskservice:
+        condition: service_healthy
     environment:
       - APP_SECRET_KEY=${APP_SECRET_KEY}
       - COMMUNITY_URL=${COMMUNITY_URL}
@@ -58,6 +61,11 @@ services:
     image: public.ecr.aws/n5k3t9x2/conv_mgr:latest
     networks:
       - saaslocalnetwork
+    depends_on:
+      settings:
+        condition: service_started
+      ansi-processing:
+        condition: service_started
     environment:
       - DAGKNOWS_WSFE_URL=${DAGKNOWS_WSFE_URL}
       - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
@@ -69,6 +77,9 @@ services:
     image: public.ecr.aws/n5k3t9x2/apigateway:latest
     networks:
       - saaslocalnetwork
+    depends_on:
+      req-router:
+        condition: service_started
     environment:
       - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
       - DagKnowsReqRouterHost=${DAGKNOWS_URL}
@@ -83,6 +94,9 @@ services:
     image: public.ecr.aws/n5k3t9x2/settings:latest
     networks:
       - saaslocalnetwork
+    depends_on:
+      taskservice:
+        condition: service_healthy
     environment:
       - MONKEY_PATCHING=True
       - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
@@ -99,6 +113,11 @@ services:
     restart: unless-stopped
     networks:
       - saaslocalnetwork
+    depends_on:
+      req-router:
+        condition: service_started
+      settings:
+        condition: service_started
     environment:
       - APP_SECRET_KEY=${APP_SECRET_KEY}
       - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
@@ -111,6 +130,11 @@ services:
     image: public.ecr.aws/n5k3t9x2/jobsched:latest
     networks:
       - saaslocalnetwork
+    depends_on:
+      taskservice:
+        condition: service_healthy
+      settings:
+        condition: service_started
     environment:
       - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
       - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
@@ -125,6 +149,11 @@ services:
     networks:
       - saaslocalnetwork
     command: ["python", "src/gateway.py"]
+    depends_on:
+      wsfe:
+        condition: service_started
+      settings:
+        condition: service_started
     environment:
       - ALLOW_DK_USER_INFO_HEADER=true
       - COMMUNITY_URL=${COMMUNITY_URL}
@@ -148,6 +177,13 @@ services:
       - PYTHONUNBUFFERED=1
       - SUPER_USER_ORG=${SUPER_USER_ORG}
       - BOOTSTRAP_TASKS=True
+    healthcheck:
+      # Use Python to check health endpoint (Python is always available in the container)
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:2235/health', timeout=3).read()\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   nginx:
     image: nginx:latest
