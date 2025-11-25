@@ -197,14 +197,15 @@ services:
     image: public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest
     networks:
       - saaslocalnetwork
-    command: npm run serve
+    command: node .output/server/index.mjs
     environment:
       - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
       - ALLOW_DK_USER_INFO_HEADER=true
-      - NODE_ENV=production
       - DEFAULT_ORG=${DEFAULT_ORG}
       - SUPER_USER_ORG=${SUPER_USER_ORG}
       - NITRO_PRESET=${NITRO_PRESET}
+      - NITRO_HOST=0.0.0.0
+      - NITRO_PORT=3000
       - COMMUNITY_URL=${COMMUNITY_URL}
       - COMMUNITY=${COMMUNITY}
       - DOWNLOAD_TASK_ID=${DOWNLOAD_TASK_ID}
