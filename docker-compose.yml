@@ -55,6 +55,7 @@ services:
       - WAIT_SLEEP=10
       - ENFORCE_SECURE_COOKIE=${ENFORCE_SECURE_COOKIE}
       - api_key=${api_key}
+      - BOOTSTRAP_TASKS=True  # Bootstrap tasks now runs in req-router after workspaces are created
 
   conv-mgr:
     image: public.ecr.aws/n5k3t9x2/conv_mgr:latest
@@ -96,6 +97,12 @@ services:
     depends_on:
       taskservice:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:2225/health', timeout=3).read()\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     environment:
       - MONKEY_PATCHING=True
       - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
@@ -128,7 +135,7 @@ services:
       taskservice:
         condition: service_healthy
       settings:
-        condition: service_started
+        condition: service_healthy
     environment:
       - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
       - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
@@ -168,7 +175,7 @@ services:
       - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
       - PYTHONUNBUFFERED=1
       - SUPER_USER_ORG=${SUPER_USER_ORG}
-      - BOOTSTRAP_TASKS=True
+      # Note: BOOTSTRAP_TASKS has been moved to req-router service
     healthcheck:
       # Use Python to check health endpoint (Python is always available in the container)
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:2235/health', timeout=3).read()\" || exit 1"]
