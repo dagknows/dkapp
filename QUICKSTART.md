@@ -137,12 +137,35 @@ make help
 
 If you get "permission denied" errors:
 
+**The installation wizard handles this automatically** by:
+1. Adding your user to the docker group (if not already added)
+2. Detecting the group isn't active in the current session
+3. Using `sg docker -c "command"` to run Docker commands with proper group permissions
+4. **Never using sudo** - only proper docker group membership
+
+**After installation,** you'll need to activate the docker group for manual commands:
+
 ```bash
-sudo usermod -aG docker $USER
+# Best solution: Activate docker group in your current shell
 newgrp docker
+
+# Now you can run commands normally:
+make logs
+make restart
+make status
 ```
 
-Or log out and back in.
+**Alternative: Log out and back in**
+The docker group will be active automatically in all new sessions.
+
+**For one-off commands without newgrp:**
+```bash
+sg docker -c "make logs"
+sg docker -c "make status"
+```
+
+**Why this happens:**
+Group membership changes don't take effect in the current shell session. The installer works around this with `sg docker`, but you need to run `newgrp docker` for your own commands or log out/in for permanent access.
 
 ### Services Won't Start
 

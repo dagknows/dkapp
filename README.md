@@ -145,11 +145,36 @@ make up logs
 
 If you get "permission denied" errors with Docker:
 
+**During Installation:**
+The wizard automatically:
+1. Adds your user to the docker group
+2. Detects that the group isn't active in the current session
+3. Uses `sg docker -c "command"` to run Docker commands with proper group permissions
+4. **Does NOT use sudo** - relies on proper docker group membership
+
+**After Installation:**
+For manual commands, the docker group still won't be active in your current session. You have two options:
+
 ```bash
-sudo usermod -aG docker $USER
+# Option 1: Activate docker group in current shell
 newgrp docker
-# Or log out and back in
+# Now you can run: make logs, make restart, etc.
+
+# Option 2: Log out and log back in
+# The docker group will be active automatically in new sessions
 ```
+
+**For individual commands without newgrp:**
+```bash
+sg docker -c "make logs"
+sg docker -c "make restart"
+```
+
+**Why this happens:**
+When you're added to a group, the change doesn't take effect in the current shell session. The installation wizard handles this by using `sg docker` during installation, but for your manual commands afterward, you need to either:
+- Run `newgrp docker` once per session
+- Log out and back in (permanent solution)
+- Prefix commands with `sg docker -c`
 
 ### Services Not Starting
 

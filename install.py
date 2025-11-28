@@ -383,39 +383,56 @@ def run_make_encrypt():
         return False
 
 def setup_docker_group():
-    """Add user to docker group and create new group session"""
+    """Ensure user is in docker group and determine if sg docker is needed"""
     print_header("Docker Group Configuration")
     
     username = os.environ.get('USER', run_command("whoami", capture_output=True))
     print_info(f"Ensuring user '{username}' is in docker group...")
     
-    # This should already be done by make prepare, but let's verify
+    # Check if user is in docker group
     groups_output = run_command("groups", capture_output=True)
-    if 'docker' in groups_output:
-        print_success("User is already in docker group")
-        return True
-    
-    print_info("Adding user to docker group...")
-    if run_command(f"sudo usermod -aG docker {username}", check=False):
-        print_success("User added to docker group")
-        print_warning("Note: You may need to log out and back in for group changes to take effect")
-        return True
+    if 'docker' not in groups_output:
+        print_info("Adding user to docker group...")
+        if run_command(f"sudo usermod -aG docker {username}", check=False):
+            print_success(f"User '{username}' added to docker group")
+        else:
+            print_error("Failed to add user to docker group")
+            print_error("Please run: sudo usermod -aG docker $USER")
+            sys.exit(1)
     else:
-        print_warning("Could not add user to docker group, but continuing...")
-        return True
+        print_success(f"User '{username}' is in docker group")
+    
+    # Check if we can run docker without sg (group active in current session)
+    can_run_docker = run_command("docker ps > /dev/null 2>&1", check=False)
+    
+    if can_run_docker:
+        print_success("Docker group is active in current session")
+        return False  # No sg needed
+    
+    print_info("Docker group not active in current session")
+    print_info("Will use 'sg docker' to run Docker commands with group permissions")
+    print_warning("After installation, run 'newgrp docker' or logout/login for permanent access")
+    
+    return True  # sg docker needed
 
-def run_make_updb():
+def run_make_updb(use_sg=False):
     """Run make updb to start database services"""
     print_header("Starting Database Services")
     
-    print_info("Running 'make updb dblogs'...")
+    print_info("Running 'make updb'...")
     print_info("This will start PostgreSQL and Elasticsearch containers.")
     print_warning("This command may prompt for your encryption password.")
     
+    # Use sg docker if needed to run with docker group privileges
+    if use_sg:
+        cmd = "sg docker -c 'make updb'"
+    else:
+        cmd = "make updb"
+    
     # Run in a way that allows interactive password input
     try:
-        # Start updb in background
-        subprocess.run("make updb", shell=True, check=True)
+        # Start updb
+        subprocess.run(cmd, shell=True, check=True)
         print_success("Database services started")
         
         print_info("\nStarting database logs...")
@@ -424,29 +441,42 @@ def run_make_updb():
         
         # Show logs for a bit, then continue
         try:
-            subprocess.run("timeout 10 make dblogs", shell=True, check=False)
+            if use_sg:
+                subprocess.run("timeout 10 sg docker -c 'make dblogs'", shell=True, check=False)
+            else:
+                subprocess.run("timeout 10 make dblogs", shell=True, check=False)
         except KeyboardInterrupt:
             print_info("\nLogs interrupted by user")
         
         return True
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
         print_error("Failed to start database services")
+        print_error("Please ensure:")
+        print_error("  1. Docker service is running: sudo systemctl status docker")
+        print_error("  2. User is in docker group: groups | grep docker")
+        print_error(f"  3. Try manually: {cmd}")
         return False
     except KeyboardInterrupt:
         print_info("\nCommand interrupted by user")
         return False
 
-def run_make_up():
+def run_make_up(use_sg=False):
     """Run make up to start application services"""
     print_header("Starting Application Services")
     
-    print_info("Running 'make up logs'...")
+    print_info("Running 'make up'...")
     print_info("This will start all DagKnows application containers.")
     print_warning("This command may prompt for your encryption password.")
     
+    # Use sg docker if needed to run with docker group privileges
+    if use_sg:
+        cmd = "sg docker -c 'make up'"
+    else:
+        cmd = "make up"
+    
     try:
         # Start services
-        subprocess.run("make up", shell=True, check=True)
+        subprocess.run(cmd, shell=True, check=True)
         print_success("Application services started")
         
         print_info("\nStarting application logs...")
@@ -455,19 +485,27 @@ def run_make_up():
         
         # Show logs
         try:
-            subprocess.run("make logs", shell=True, check=False)
+            if use_sg:
+                subprocess.run("sg docker -c 'make logs'", shell=True, check=False)
+            else:
+                subprocess.run("make logs", shell=True, check=False)
         except KeyboardInterrupt:
             print_info("\nLogs stopped by user")
         
         return True
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
         print_error("Failed to start application services")
+        print_error("Please ensure:")
+        print_error("  1. Database services are running: make dblogs")
+        print_error("  2. Docker service is running: sudo systemctl status docker")
+        print_error("  3. User is in docker group: groups | grep docker")
+        print_error(f"  4. Try manually: {cmd}")
         return False
     except KeyboardInterrupt:
         print_info("\nCommand interrupted by user")
         return False
 
-def print_final_message(dagknows_url):
+def print_final_message(dagknows_url, used_sg=False):
     """Print final success message with access instructions"""
     print_header("Installation Complete!")
     
@@ -476,6 +514,23 @@ def print_final_message(dagknows_url):
     print(f"{Colors.BOLD}Access your DagKnows instance at:{Colors.ENDC}")
     print(f"{Colors.OKCYAN}{Colors.BOLD}  {dagknows_url}{Colors.ENDC}")
     print()
+    
+    if used_sg:
+        print(f"{Colors.WARNING}{Colors.BOLD}⚠ IMPORTANT - Docker Group Activation:{Colors.ENDC}")
+        print(f"{Colors.WARNING}The installation used 'sg docker' to run Docker commands.{Colors.ENDC}")
+        print(f"{Colors.WARNING}To run commands manually, you need to activate the docker group:{Colors.ENDC}")
+        print()
+        print(f"{Colors.BOLD}Option 1 (Recommended): Activate for current session{Colors.ENDC}")
+        print(f"  {Colors.OKCYAN}newgrp docker{Colors.ENDC}")
+        print(f"  Then run commands normally: make logs, make restart, etc.")
+        print()
+        print(f"{Colors.BOLD}Option 2: Log out and back in{Colors.ENDC}")
+        print(f"  The docker group will be active in all new sessions")
+        print()
+        print(f"{Colors.BOLD}Option 3: Prefix each command{Colors.ENDC}")
+        print(f"  {Colors.OKCYAN}sg docker -c 'make logs'{Colors.ENDC}")
+        print()
+    
     print(f"{Colors.BOLD}Useful commands:{Colors.ENDC}")
     print(f"  {Colors.OKBLUE}make logs{Colors.ENDC}        - View application logs")
     print(f"  {Colors.OKBLUE}make dblogs{Colors.ENDC}      - View database logs")
@@ -483,6 +538,7 @@ def print_final_message(dagknows_url):
     print(f"  {Colors.OKBLUE}make up{Colors.ENDC}          - Start application services")
     print(f"  {Colors.OKBLUE}make updb{Colors.ENDC}        - Start database services")
     print(f"  {Colors.OKBLUE}make restart{Colors.ENDC}     - Restart all services")
+    print(f"  {Colors.OKBLUE}make status{Colors.ENDC}      - Check system status")
     print()
     print(f"{Colors.WARNING}Note: Some commands will prompt for your encryption password{Colors.ENDC}")
     print()
@@ -552,22 +608,23 @@ def main():
             print_error("Encryption failed")
             sys.exit(1)
         
-        setup_docker_group()
+        # Check docker group and determine if we need sg/sudo
+        use_sg = setup_docker_group()
         
         # Start services
-        if not run_make_updb():
+        if not run_make_updb(use_sg):
             print_error("Database startup failed")
             sys.exit(1)
         
         print_info("\nWaiting for database services to stabilize...")
         time.sleep(10)
         
-        if not run_make_up():
+        if not run_make_up(use_sg):
             print_error("Application startup failed")
             sys.exit(1)
         
         # Success!
-        print_final_message(dagknows_url)
+        print_final_message(dagknows_url, use_sg)
         
     except KeyboardInterrupt:
         print_error("\n\nInstallation interrupted by user")
