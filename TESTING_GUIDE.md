@@ -549,6 +549,44 @@ make status
 
 ---
 
+## **Test 16: Rerun After Install Without newgrp**
+
+**Objective**: Verify graceful handling when user hasn't run `newgrp docker`
+
+**Steps**:
+```bash
+1. Complete full installation
+2. Exit (Ctrl+C or let it complete)
+3. WITHOUT running 'newgrp docker', run:
+   python3 install.py
+4. Observe behavior
+```
+
+**Expected Results**:
+- ✅ No permission errors or crashes
+- ✅ Uses `sg docker` to check container status
+- ✅ Detects application is already running
+- ✅ Shows:
+  ```
+  ✓ Application services are already running!
+  
+  Your DagKnows installation appears to be complete.
+  
+  Do you want to reinstall anyway? (yes/no) [no]:
+  ```
+- ✅ Exits gracefully if user says 'no'
+
+**Verify**:
+```bash
+# Script should not crash with CalledProcessError
+# Should handle docker permission gracefully
+# Should detect running services even without direct docker access
+```
+
+**Time**: ~2 minutes
+
+---
+
 ## 🔍 **Quick Verification Commands**
 
 After any test, use these to verify:
@@ -597,6 +635,7 @@ ls -la .env.gpg.backup.*
 | 13. Password Mismatch | 5 min | ✅ Yes | Error handling |
 | 14. Network Issues | 15 min | ⚠️ Medium | Recovery |
 | 15. Permissions | 12 min | ✅ Yes | Security |
+| 16. Rerun Without newgrp | 2 min | ✅ Yes | Permission handling |
 
 **Total Testing Time**: ~2-3 hours for all tests
 
@@ -612,8 +651,9 @@ If time is limited, run these critical tests:
 4. **Test 4** - Docker Group (permissions)
 5. **Test 6** - Interrupt After Encrypt (resume)
 6. **Test 8** - Already Installed (detection)
+7. **Test 16** - Rerun Without newgrp (permission handling)
 
-**Time**: ~45 minutes
+**Time**: ~50 minutes
 
 ---
 

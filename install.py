@@ -75,19 +75,36 @@ def check_installation_state():
         'app_running': False
     }
     
-    # Check if docker services are running
+    # Check if docker services are running (with permission handling)
     if state['docker_installed']:
-        # Check database containers
-        result = run_command("docker ps --filter name=postgres --filter name=elasticsearch --format '{{.Names}}'", 
-                           capture_output=True)
-        if result and ('postgres' in result or 'elasticsearch' in result):
-            state['db_running'] = True
-        
-        # Check application containers
-        result = run_command("docker ps --filter name=nginx --filter name=req-router --format '{{.Names}}'", 
-                           capture_output=True)
-        if result and ('nginx' in result or 'req-router' in result):
-            state['app_running'] = True
+        try:
+            # Try regular docker command first
+            result = run_command("docker ps --filter name=postgres --filter name=elasticsearch --format '{{.Names}}'", 
+                               capture_output=True, check=False)
+            if result and ('postgres' in result or 'elasticsearch' in result):
+                state['db_running'] = True
+            
+            # Check application containers
+            result = run_command("docker ps --filter name=nginx --filter name=req-router --format '{{.Names}}'", 
+                               capture_output=True, check=False)
+            if result and ('nginx' in result or 'req-router' in result):
+                state['app_running'] = True
+        except (subprocess.CalledProcessError, Exception):
+            # If docker commands fail (e.g., permission denied), try with sg docker
+            try:
+                result = run_command("sg docker -c \"docker ps --filter name=postgres --filter name=elasticsearch --format '{{.Names}}'\"", 
+                                   capture_output=True, check=False)
+                if result and ('postgres' in result or 'elasticsearch' in result):
+                    state['db_running'] = True
+                
+                result = run_command("sg docker -c \"docker ps --filter name=nginx --filter name=req-router --format '{{.Names}}'\"", 
+                                   capture_output=True, check=False)
+                if result and ('nginx' in result or 'req-router' in result):
+                    state['app_running'] = True
+            except (subprocess.CalledProcessError, Exception):
+                # If even sg docker fails, we can't check container status
+                # This is fine, we'll proceed with other checks
+                pass
     
     return state
 
