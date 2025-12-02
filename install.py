@@ -543,11 +543,18 @@ def run_make_pull(use_sg=False):
     """Pull Docker images from public ECR"""
     print_header("Pulling Docker Images")
     
-    # Check if images are already present
+    # Check if all required images are already present
+    # These match the images in Makefile's pull target
     images_needed = [
         'public.ecr.aws/n5k3t9x2/wsfe:latest',
-        'public.ecr.aws/n5k3t9x2/req_router:latest',
+        'public.ecr.aws/n5k3t9x2/ansi_processing:latest',
+        'public.ecr.aws/n5k3t9x2/jobsched:latest',
+        'public.ecr.aws/n5k3t9x2/apigateway:latest',
+        'public.ecr.aws/n5k3t9x2/conv_mgr:latest',
+        'public.ecr.aws/n5k3t9x2/settings:latest',
         'public.ecr.aws/n5k3t9x2/taskservice:latest',
+        'public.ecr.aws/n5k3t9x2/req_router:latest',
+        'public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest',
     ]
     
     images_present = 0
@@ -556,8 +563,10 @@ def run_make_pull(use_sg=False):
             images_present += 1
     
     if images_present == len(images_needed):
-        print_success("Docker images already present (skipping pull)")
+        print_success(f"All {len(images_needed)} Docker images already present (skipping pull)")
         return True
+    elif images_present > 0:
+        print_info(f"Found {images_present}/{len(images_needed)} images, pulling remaining...")
     
     print_info("Pulling Docker images from public ECR...")
     print_info("This downloads images one by one to avoid concurrent request limits.")
