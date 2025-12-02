@@ -373,13 +373,45 @@ def configure_env(resume=False):
                                                       "User", required=True)
     
     print()
-    print(f"{Colors.WARNING}{Colors.BOLD}⚠ IMPORTANT:{Colors.ENDC}")
+    print(f"{Colors.WARNING}{Colors.BOLD}⚠ IMPORTANT - Password Requirements:{Colors.ENDC}")
     print(f"{Colors.WARNING}Use the SAME password for both Super User and encryption.{Colors.ENDC}")
     print(f"{Colors.WARNING}This simplifies password management.{Colors.ENDC}")
     print()
+    print(f"{Colors.BOLD}Password MUST contain:{Colors.ENDC}")
+    print("  • At least 8 characters")
+    print("  • At least 1 uppercase letter (A-Z)")
+    print("  • At least 1 lowercase letter (a-z)")
+    print("  • At least 1 number (0-9)")
+    print("  • At least 1 special character (!@#$%^&*()-_=+)")
+    print()
     
-    config['SUPER_PASSWORD'] = prompt_for_value("Super User Password (will also be used for encryption)", 
-                                                 required=True, is_password=True)
+    while True:
+        config['SUPER_PASSWORD'] = prompt_for_value("Super User Password (will also be used for encryption)", 
+                                                     required=True, is_password=True)
+        
+        # Validate password complexity
+        if len(config['SUPER_PASSWORD']) < 8:
+            print_error("Password must be at least 8 characters long!")
+            continue
+        
+        if not re.search(r'[A-Z]', config['SUPER_PASSWORD']):
+            print_error("Password must contain at least one uppercase letter!")
+            continue
+        
+        if not re.search(r'[a-z]', config['SUPER_PASSWORD']):
+            print_error("Password must contain at least one lowercase letter!")
+            continue
+        
+        if not re.search(r'[0-9]', config['SUPER_PASSWORD']):
+            print_error("Password must contain at least one number!")
+            continue
+        
+        if not re.search(r'[!@#$%^&*()\-_=+\[\]{};:,.<>?/\\|`~]', config['SUPER_PASSWORD']):
+            print_error("Password must contain at least one special character (!@#$%^&*()-_=+)")
+            continue
+        
+        # Password is valid
+        break
     
     # Confirm password
     password_confirm = getpass.getpass("Confirm Super User Password: ")
@@ -459,24 +491,43 @@ def create_env_file(config):
     print_success(".env file created successfully")
     return True
 
-def run_make_encrypt():
-    """Run make encrypt with password prompt"""
+def run_make_encrypt(password=None):
+    """Run encryption with the provided password"""
     print_header("Encrypting Configuration")
     
     print_info("Your .env file will now be encrypted using GPG.")
-    print()
-    print(f"{Colors.WARNING}{Colors.BOLD}⚠ USE THE SAME PASSWORD as your Super User password{Colors.ENDC}")
-    print(f"{Colors.WARNING}This keeps password management simple and consistent.{Colors.ENDC}")
-    print()
+    print_info("Using your Super User password for encryption (as recommended)")
     print_warning("Remember this password! You'll need it for 'make updb' and 'make up' commands.\n")
     
-    # Run make encrypt (this will prompt for password interactively)
-    if run_command("make encrypt", check=False):
-        print_success("Configuration encrypted successfully")
-        return True
+    if password:
+        # Use non-interactive GPG encryption with the provided password
+        try:
+            # Use gpg with --batch and --passphrase options for non-interactive encryption
+            cmd = f"echo '{password}' | gpg --batch --yes --passphrase-fd 0 -c .env"
+            subprocess.run(cmd, shell=True, check=True)
+            
+            # Remove the unencrypted .env file
+            if os.path.exists('.env'):
+                os.remove('.env')
+            
+            print_success("Configuration encrypted successfully")
+            return True
+        except subprocess.CalledProcessError:
+            print_error("Failed to encrypt configuration")
+            return False
     else:
-        print_error("Failed to encrypt configuration")
-        return False
+        # Fallback to interactive mode if no password provided
+        print()
+        print(f"{Colors.WARNING}{Colors.BOLD}⚠ Enter your Super User password for encryption{Colors.ENDC}")
+        print()
+        
+        # Run make encrypt (this will prompt for password interactively)
+        if run_command("make encrypt", check=False):
+            print_success("Configuration encrypted successfully")
+            return True
+        else:
+            print_error("Failed to encrypt configuration")
+            return False
 
 def setup_docker_group():
     """Ensure user is in docker group and determine if sg docker is needed"""
@@ -824,20 +875,24 @@ def main():
             sys.exit(1)
         
         # Configuration
-        if not configure_env(resume=state['env_configured']):
+        config_result = configure_env(resume=state['env_configured'])
+        if not config_result:
             print_error("Configuration failed")
             sys.exit(1)
         
-        # Get DAGKNOWS_URL for final message
+        # Get DAGKNOWS_URL and password for encryption
         dagknows_url = "https://your-server"
+        super_password = None
+        
         if os.path.exists('.env'):
             with open('.env', 'r') as f:
                 for line in f:
                     if line.startswith('DAGKNOWS_URL='):
                         dagknows_url = line.split('=', 1)[1].strip()
-                        break
+                    elif line.startswith('SUPER_PASSWORD='):
+                        super_password = line.split('=', 1)[1].strip()
         
-        if not run_make_encrypt():
+        if not run_make_encrypt(password=super_password):
             print_error("Encryption failed")
             sys.exit(1)
         

@@ -49,6 +49,13 @@ python3 install.py
 5. **OpenAI API** (optional) - For AI features
 6. **Encryption Password** - ⚠️ **Use SAME password as admin** (recommended)
 
+**Password Requirements**:
+- Minimum 8 characters
+- At least 1 uppercase letter (A-Z)
+- At least 1 lowercase letter (a-z)
+- At least 1 number (0-9)
+- At least 1 special character (!@#$%^&*()-_=+)
+
 **Password Tip**: The wizard recommends using the same password for both admin and encryption to simplify management.
 
 ---
@@ -423,7 +430,7 @@ Handles permission gracefully:
 ## Security Best Practices
 
 ### Essential
-1. ✅ Use strong passwords (12+ characters, mixed case, numbers, symbols)
+1. ✅ Use strong passwords (8+ characters minimum, with uppercase, lowercase, numbers, and special characters - enforced by wizard)
 2. ✅ Remember encryption password (no recovery!)
 3. ✅ Regular backups: `make backups`
 4. ✅ Keep system updated: `make update`
