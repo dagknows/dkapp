@@ -268,6 +268,7 @@ The installation wizard will prompt you for:
 
 6. **Encryption Password**
    - To secure your .env file
+   - **⚠️ Use the SAME password as admin password (recommended)**
    - **REMEMBER THIS!**
 
 ## ✅ What Gets Automated
@@ -286,6 +287,7 @@ Everything else is handled automatically:
 - ✓ .env file creation
 - ✓ Configuration encryption
 - ✓ Database services startup
+- ✓ Docker image pulling (sequential to avoid ECR rate limits)
 - ✓ Application services startup
 - ✓ Health monitoring
 

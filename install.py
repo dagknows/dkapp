@@ -52,7 +52,7 @@ def run_command(cmd, shell=True, check=True, capture_output=False):
         else:
             result = subprocess.run(cmd, shell=shell, check=check)
             return result.returncode == 0
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError:
         if check:
             raise
         return False
@@ -63,6 +63,33 @@ def check_root():
         print_warning("Running as root. Some commands will be run without sudo.")
         return True
     return False
+
+def check_installation_state():
+    """Check the current state of installation to allow resuming"""
+    state = {
+        'env_configured': os.path.exists('.env.gpg'),
+        'env_unencrypted': os.path.exists('.env'),
+        'docker_installed': shutil.which('docker') is not None,
+        'make_installed': shutil.which('make') is not None,
+        'db_running': False,
+        'app_running': False
+    }
+    
+    # Check if docker services are running
+    if state['docker_installed']:
+        # Check database containers
+        result = run_command("docker ps --filter name=postgres --filter name=elasticsearch --format '{{.Names}}'", 
+                           capture_output=True)
+        if result and ('postgres' in result or 'elasticsearch' in result):
+            state['db_running'] = True
+        
+        # Check application containers
+        result = run_command("docker ps --filter name=nginx --filter name=req-router --format '{{.Names}}'", 
+                           capture_output=True)
+        if result and ('nginx' in result or 'req-router' in result):
+            state['app_running'] = True
+    
+    return state
 
 def check_os():
     """Check if the OS is supported"""
@@ -90,9 +117,19 @@ def check_internet():
         print_error("No internet connection detected")
         return False
 
-def update_system():
+def update_system(skip_if_recent=True):
     """Update system packages"""
     print_header("Updating System Packages")
+    
+    # Check if we updated recently (within last hour)
+    if skip_if_recent and os.path.exists('/var/lib/apt/periodic/update-success-stamp'):
+        try:
+            stamp_time = os.path.getmtime('/var/lib/apt/periodic/update-success-stamp')
+            if time.time() - stamp_time < 3600:  # Less than 1 hour ago
+                print_success("System packages recently updated (skipping)")
+                return True
+        except (OSError, IOError):
+            pass
     
     print_info("Running apt update...")
     if not run_command("sudo apt update", check=False):
@@ -108,7 +145,7 @@ def update_system():
 
 def install_make():
     """Install make if not present"""
-    print_info("Checking if make is installed...")
+    print_header("Checking Make Installation")
     
     if shutil.which('make'):
         print_success("make is already installed")
@@ -126,6 +163,20 @@ def run_make_prepare():
     """Run make prepare to install Docker and dependencies"""
     print_header("Preparing Docker Environment")
     
+    # Check if Docker is already installed
+    if shutil.which('docker') and shutil.which('docker-compose'):
+        print_success("Docker and docker-compose already installed")
+        
+        # Still need to ensure user is in docker group
+        username = os.environ.get('USER', run_command("whoami", capture_output=True))
+        groups_output = run_command("groups", capture_output=True)
+        if 'docker' not in groups_output:
+            print_info("Adding user to docker group...")
+            run_command(f"sudo usermod -aG docker {username}", check=False)
+            print_success("User added to docker group")
+        
+        return True
+    
     print_info("Running 'make prepare'... (This may take several minutes)")
     
     # Check if .env.default exists, if not create it
@@ -142,15 +193,20 @@ def run_make_prepare():
 
 def restart_docker():
     """Restart Docker service"""
-    print_header("Restarting Docker Service")
+    print_header("Ensuring Docker Service is Running")
     
-    print_info("Restarting Docker...")
-    if run_command("sudo systemctl restart docker", check=False):
+    # Check if Docker is already running
+    if run_command("docker ps > /dev/null 2>&1", check=False):
+        print_success("Docker is already running")
+        return True
+    
+    print_info("Starting Docker service...")
+    if run_command("sudo systemctl start docker", check=False):
         time.sleep(3)  # Give Docker a moment to fully start
-        print_success("Docker restarted successfully")
+        print_success("Docker started successfully")
         return True
     else:
-        print_error("Failed to restart Docker")
+        print_error("Failed to start Docker")
         return False
 
 def create_env_default():
@@ -241,7 +297,7 @@ def get_public_ip():
     try:
         ip = run_command("curl -s ifconfig.me", capture_output=True)
         return ip if ip else ""
-    except:
+    except (subprocess.CalledProcessError, Exception):
         return ""
 
 def validate_email(email):
@@ -249,9 +305,22 @@ def validate_email(email):
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(pattern, email) is not None
 
-def configure_env():
+def configure_env(resume=False):
     """Interactive configuration of .env file"""
     print_header("Environment Configuration")
+    
+    if resume:
+        print_warning("Existing configuration detected.")
+        response = input(f"{Colors.BOLD}Do you want to reconfigure? (yes/no) [no]: {Colors.ENDC}").strip().lower()
+        if response not in ['yes', 'y']:
+            print_info("Keeping existing configuration")
+            return True
+        
+        # Backup existing config
+        if os.path.exists('.env.gpg'):
+            backup_name = f'.env.gpg.backup.{int(time.time())}'
+            shutil.copy('.env.gpg', backup_name)
+            print_info(f"Backed up existing config to {backup_name}")
     
     print_info("Please provide the following configuration values.")
     print_info("Press Enter to keep default values (shown in brackets).\n")
@@ -285,7 +354,14 @@ def configure_env():
                                                        "Admin", required=True)
     config['SUPER_USER_LASTNAME'] = prompt_for_value("Super User Last Name", 
                                                       "User", required=True)
-    config['SUPER_PASSWORD'] = prompt_for_value("Super User Password", 
+    
+    print()
+    print(f"{Colors.WARNING}{Colors.BOLD}⚠ IMPORTANT:{Colors.ENDC}")
+    print(f"{Colors.WARNING}Use the SAME password for both Super User and encryption.{Colors.ENDC}")
+    print(f"{Colors.WARNING}This simplifies password management.{Colors.ENDC}")
+    print()
+    
+    config['SUPER_PASSWORD'] = prompt_for_value("Super User Password (will also be used for encryption)", 
                                                  required=True, is_password=True)
     
     # Confirm password
@@ -371,7 +447,10 @@ def run_make_encrypt():
     print_header("Encrypting Configuration")
     
     print_info("Your .env file will now be encrypted using GPG.")
-    print_info("You will need to enter a password to encrypt the file.")
+    print()
+    print(f"{Colors.WARNING}{Colors.BOLD}⚠ USE THE SAME PASSWORD as your Super User password{Colors.ENDC}")
+    print(f"{Colors.WARNING}This keeps password management simple and consistent.{Colors.ENDC}")
+    print()
     print_warning("Remember this password! You'll need it for 'make updb' and 'make up' commands.\n")
     
     # Run make encrypt (this will prompt for password interactively)
@@ -449,7 +528,7 @@ def run_make_updb(use_sg=False):
             print_info("\nLogs interrupted by user")
         
         return True
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError:
         print_error("Failed to start database services")
         print_error("Please ensure:")
         print_error("  1. Docker service is running: sudo systemctl status docker")
@@ -459,6 +538,49 @@ def run_make_updb(use_sg=False):
     except KeyboardInterrupt:
         print_info("\nCommand interrupted by user")
         return False
+
+def run_make_pull(use_sg=False):
+    """Pull Docker images from public ECR"""
+    print_header("Pulling Docker Images")
+    
+    # Check if images are already present
+    images_needed = [
+        'public.ecr.aws/n5k3t9x2/wsfe:latest',
+        'public.ecr.aws/n5k3t9x2/req_router:latest',
+        'public.ecr.aws/n5k3t9x2/taskservice:latest',
+    ]
+    
+    images_present = 0
+    for image in images_needed:
+        if run_command(f"docker images -q {image} 2>/dev/null", capture_output=True, check=False):
+            images_present += 1
+    
+    if images_present == len(images_needed):
+        print_success("Docker images already present (skipping pull)")
+        return True
+    
+    print_info("Pulling Docker images from public ECR...")
+    print_info("This downloads images one by one to avoid concurrent request limits.")
+    print_info("This may take several minutes depending on your internet speed...")
+    
+    # Use sg docker if needed
+    if use_sg:
+        cmd = "sg docker -c 'make pull'"
+    else:
+        cmd = "make pull"
+    
+    try:
+        subprocess.run(cmd, shell=True, check=True)
+        print_success("Docker images pulled successfully")
+        return True
+    except subprocess.CalledProcessError:
+        print_error("Failed to pull Docker images")
+        print_warning("Continuing anyway - images will be pulled during 'make up'")
+        return True  # Don't fail installation, just warn
+    except KeyboardInterrupt:
+        print_info("\nImage pull interrupted by user")
+        print_warning("Continuing anyway - images will be pulled during 'make up'")
+        return True
 
 def run_make_up(use_sg=False):
     """Run make up to start application services"""
@@ -493,7 +615,7 @@ def run_make_up(use_sg=False):
             print_info("\nLogs stopped by user")
         
         return True
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError:
         print_error("Failed to start application services")
         print_error("Please ensure:")
         print_error("  1. Database services are running: make dblogs")
@@ -522,10 +644,10 @@ def print_final_message(dagknows_url, used_sg=False):
         print()
         print(f"{Colors.BOLD}Option 1 (Recommended): Activate for current session{Colors.ENDC}")
         print(f"  {Colors.OKCYAN}newgrp docker{Colors.ENDC}")
-        print(f"  Then run commands normally: make logs, make restart, etc.")
+        print("  Then run commands normally: make logs, make restart, etc.")
         print()
         print(f"{Colors.BOLD}Option 2: Log out and back in{Colors.ENDC}")
-        print(f"  The docker group will be active in all new sessions")
+        print("  The docker group will be active in all new sessions")
         print()
         print(f"{Colors.BOLD}Option 3: Prefix each command{Colors.ENDC}")
         print(f"  {Colors.OKCYAN}sg docker -c 'make logs'{Colors.ENDC}")
@@ -553,7 +675,92 @@ def main():
     os.chdir(script_dir)
     print_info(f"Working directory: {os.getcwd()}")
     
-    # Confirmation
+    # Check current installation state
+    state = check_installation_state()
+    
+    # Handle resume scenarios
+    if state['env_configured']:
+        print_header("Existing Installation Detected")
+        print_success("Found existing encrypted configuration (.env.gpg)")
+        
+        if state['app_running']:
+            print_success("Application services are already running!")
+            print()
+            print(f"{Colors.BOLD}Your DagKnows installation appears to be complete.{Colors.ENDC}")
+            print()
+            print("Available actions:")
+            print("  1. View logs: make logs")
+            print("  2. Restart services: make restart")
+            print("  3. Check status: make status")
+            print("  4. Reconfigure: make reconfigure")
+            print()
+            response = input(f"{Colors.BOLD}Do you want to reinstall anyway? (yes/no) [no]: {Colors.ENDC}").strip().lower()
+            if response not in ['yes', 'y']:
+                print_info("Installation skipped. System is already running.")
+                sys.exit(0)
+        elif state['db_running']:
+            print_success("Database services are running")
+            print_info("Application services are not running yet")
+            response = input(f"{Colors.BOLD}Resume from starting application services? (yes/no) [yes]: {Colors.ENDC}").strip().lower()
+            if response not in ['no', 'n']:
+                print_info("Resuming installation from application startup...")
+                # Jump to app startup
+                try:
+                    use_sg = setup_docker_group()
+                    if not run_make_pull(use_sg):
+                        print_error("Image pull failed")
+                        sys.exit(1)
+                    if not run_make_up(use_sg):
+                        print_error("Application startup failed")
+                        sys.exit(1)
+                    
+                    dagknows_url = "https://your-server"
+                    if os.path.exists('.env.gpg'):
+                        print_info("To view your DagKnows URL, decrypt your config: gpg -o .env -d .env.gpg")
+                    print_final_message(dagknows_url, use_sg)
+                    sys.exit(0)
+                except Exception as e:
+                    print_error(f"Resume failed: {e}")
+                    sys.exit(1)
+        else:
+            print_warning("Services are not running")
+            response = input(f"{Colors.BOLD}Resume from starting services? (yes/no) [yes]: {Colors.ENDC}").strip().lower()
+            if response not in ['no', 'n']:
+                print_info("Resuming installation from service startup...")
+                # Jump to service startup
+                try:
+                    use_sg = setup_docker_group()
+                    if not run_make_updb(use_sg):
+                        print_error("Database startup failed")
+                        sys.exit(1)
+                    
+                    print_info("\nWaiting for database services to stabilize...")
+                    time.sleep(10)
+                    
+                    if not run_make_pull(use_sg):
+                        print_error("Image pull failed")
+                        sys.exit(1)
+                    
+                    if not run_make_up(use_sg):
+                        print_error("Application startup failed")
+                        sys.exit(1)
+                    
+                    dagknows_url = "https://your-server"
+                    print_final_message(dagknows_url, use_sg)
+                    sys.exit(0)
+                except Exception as e:
+                    print_error(f"Resume failed: {e}")
+                    sys.exit(1)
+    
+    # Check for unencrypted .env file (interrupted before encryption)
+    if state['env_unencrypted']:
+        print_warning("Found unencrypted .env file from previous run")
+        response = input(f"{Colors.BOLD}Do you want to use it? (yes/no) [yes]: {Colors.ENDC}").strip().lower()
+        if response in ['no', 'n']:
+            os.remove('.env')
+            print_info("Removed old .env file")
+    
+    # Confirmation for fresh install
     print_warning("This script will:")
     print("  1. Update your system packages")
     print("  2. Install required dependencies (make, docker, etc.)")
@@ -591,7 +798,7 @@ def main():
             sys.exit(1)
         
         # Configuration
-        if not configure_env():
+        if not configure_env(resume=state['env_configured']):
             print_error("Configuration failed")
             sys.exit(1)
         
@@ -618,6 +825,12 @@ def main():
         
         print_info("\nWaiting for database services to stabilize...")
         time.sleep(10)
+        
+        # Pull images before starting application services
+        # This avoids concurrent unauthenticated requests to public ECR
+        if not run_make_pull(use_sg):
+            print_error("Image pull failed")
+            sys.exit(1)
         
         if not run_make_up(use_sg):
             print_error("Application startup failed")

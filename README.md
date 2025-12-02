@@ -48,7 +48,7 @@ The installation wizard will prompt you for:
 3. **Super User Details**:
    - Email address
    - First and Last name
-   - Password
+   - Password (⚠️ **Use the same password for encryption - see below**)
    - Organization name
 4. **Mail Configuration** (optional):
    - Mail server details
@@ -56,7 +56,14 @@ The installation wizard will prompt you for:
 5. **OpenAI Configuration** (optional):
    - API key
    - Organization ID
-6. **Encryption Password**: Password to encrypt your `.env` file (remember this!)
+6. **Encryption Password**: Password to encrypt your `.env` file
+
+**⚠️ IMPORTANT PASSWORD RECOMMENDATION:**
+The wizard will prompt you to use the **same password** for both:
+- Super User password
+- Encryption password (for GPG)
+
+This simplifies password management and ensures you only need to remember one password. The wizard will remind you of this during installation.
 
 ### After Installation
 
@@ -70,9 +77,10 @@ make down        # Stop all services
 make up          # Start application services (prompts for password)
 make updb        # Start database services (prompts for password)
 make restart     # Restart all services (prompts for password)
+make pull        # Pull latest Docker images from public ECR
 ```
 
-**Note:** Commands that require access to the encrypted `.env` file will prompt for your encryption password.
+**Note:** Commands that require access to the encrypted `.env` file will prompt for your encryption password (which should be the same as your Super User password if you followed the wizard's recommendation).
 
 ## Manual Installation
 

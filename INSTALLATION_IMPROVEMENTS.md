@@ -27,7 +27,14 @@ The wizard only prompts for information that requires user input:
 - Super user credentials (email, name, password, organization)
 - Mail configuration (optional)
 - OpenAI API keys (optional)
-- Encryption password
+- Encryption password (wizard recommends using same as super user password)
+
+**Password Management**:
+The wizard recommends using the **same password** for:
+- Super User password
+- Encryption password (GPG)
+
+This simplifies password management and is clearly communicated during installation.
 
 **Automation**:
 Everything else is automated:
@@ -36,6 +43,7 @@ Everything else is automated:
 - Docker repository setup
 - User group configuration
 - Docker network creation
+- Sequential Docker image pulling (avoids ECR rate limits)
 - Service startup
 
 ### 2. Shell Wrapper (`install.sh`)

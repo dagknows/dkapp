@@ -51,7 +51,9 @@ The wizard will ask you for:
 5. **OpenAI API key** (optional) - For AI features
 
 6. **Encryption password** - To secure your configuration file
-   - ⚠️ **Remember this password!** You'll need it for management commands
+   - ⚠️ **Use the SAME password as your admin password** (recommended)
+   - This simplifies password management
+   - You'll need it for management commands
 
 ### Step 4: Wait for Installation
 
@@ -59,9 +61,10 @@ The wizard will:
 - Update your system packages
 - Install Docker and dependencies
 - Configure the application
+- Pull Docker images from public ECR (one by one to avoid rate limits)
 - Start all services
 
-This takes about 5-10 minutes depending on your internet speed.
+This takes about 5-15 minutes depending on your internet speed.
 
 ### Step 5: Access DagKnows
 
