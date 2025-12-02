@@ -6,6 +6,12 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# DagKnows specific files
+.env.tmp
+.env.default
+.backups/
+tls/
+
 # C extensions
 *.so
 

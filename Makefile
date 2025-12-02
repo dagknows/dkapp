@@ -12,10 +12,12 @@ logs:
 	docker compose logs -f
 
 prepare:
-	cp .env.default .env
-	rm -f .env.default
+	@if [ -f .env.default ]; then \
+		cp .env.default .env; \
+		rm -f .env.default; \
+	fi
 	sudo apt-get update
-	sudo apt-get install -y make docker.io docker-compose unzip python3-pip docker-compose-v2
+	sudo apt-get install -y make docker.io docker-compose unzip python3-pip docker-compose-v2 gpg
 	echo "Installing Docker Repos..."
 	sudo apt-get install ca-certificates curl gnupg
 	sudo install -m 0755 -d /etc/apt/keyrings
@@ -86,3 +88,51 @@ backups:
 	sudo cp -r ${DATAROOT}/postgres-data ".backups/${DATE_SUFFIX}/postgres-data"
 	sudo cp -r ${DATAROOT}/esdata1 ".backups/${DATE_SUFFIX}/esdata1"
 	sudo cp -r ${DATAROOT}/elastic_backup ".backups/${DATE_SUFFIX}/elastic_backup"
+
+install:
+	@echo "Running DagKnows installation wizard..."
+	@python3 install.py
+
+reconfigure:
+	@echo "Running DagKnows reconfiguration tool..."
+	@python3 reconfigure.py
+
+status:
+	@echo "Checking DagKnows installation status..."
+	@python3 check-status.py
+
+uninstall:
+	@echo "Running DagKnows uninstall script..."
+	@./uninstall.sh
+
+help:
+	@echo "DagKnows Management Commands"
+	@echo "============================"
+	@echo ""
+	@echo "Installation & Setup:"
+	@echo "  make install      - Run the automated installation wizard"
+	@echo "  make prepare      - Install Docker and dependencies (Ubuntu)"
+	@echo "  make uninstall    - Remove DagKnows installation"
+	@echo ""
+	@echo "Configuration:"
+	@echo "  make encrypt      - Encrypt the .env file"
+	@echo "  make reconfigure  - Update configuration without reinstalling"
+	@echo ""
+	@echo "Service Management:"
+	@echo "  make updb         - Start database services (postgres, elasticsearch)"
+	@echo "  make up           - Start application services"
+	@echo "  make down         - Stop all services"
+	@echo "  make restart      - Restart all services"
+	@echo ""
+	@echo "Monitoring:"
+	@echo "  make logs         - View application logs (follow mode)"
+	@echo "  make dblogs       - View database logs (follow mode)"
+	@echo "  make status       - Check installation status"
+	@echo ""
+	@echo "Maintenance:"
+	@echo "  make pull         - Pull latest Docker images"
+	@echo "  make build        - Build Docker images"
+	@echo "  make update       - Update to latest version"
+	@echo "  make backups      - Backup all data"
+	@echo ""
+	@echo "Note: Commands that access encrypted files will prompt for password"
