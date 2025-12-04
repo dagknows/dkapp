@@ -232,7 +232,7 @@ def create_env_default():
 # Please fill in all required values
 
 # Application Configuration
-APP_SECRET_KEY=your_secret_key_here_change_this
+APP_SECRET_KEY=kimharaihikimukankanaihikimasamaikarnavatamsairalam
 DAGKNOWS_URL=https://YOUR_PUBLIC_IP_OR_DOMAIN
 DAGKNOWS_WSFE_URL=http://wsfe:4446
 DAGKNOWS_ELASTIC_URL=http://elasticsearch:9200
@@ -445,7 +445,7 @@ def create_env_file(config):
     
     # Base configuration that doesn't need user input
     base_config = {
-        'APP_SECRET_KEY': 'your_secret_key_here_change_this',
+        'APP_SECRET_KEY': 'kimharaihikimukankanaihikimasamaikarnavatamsairalam',
         'DAGKNOWS_WSFE_URL': 'http://wsfe:4446',
         'DAGKNOWS_ELASTIC_URL': 'http://elasticsearch:9200',
         'DAGKNOWS_FORCE_TOKEN': '',
