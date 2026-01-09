@@ -4,7 +4,7 @@ networks:
 
 services:
   req-router:
-    image: public.ecr.aws/n5k3t9x2/req_router:latest
+    image: ${DK_REQ_ROUTER_IMAGE:-public.ecr.aws/n5k3t9x2/req_router}:${DK_REQ_ROUTER_TAG:-latest}
     networks:
       - saaslocalnetwork
     command: ["sh", "src/wait-for-it.sh"]
@@ -58,7 +58,7 @@ services:
       - BOOTSTRAP_TASKS=True  # Bootstrap tasks now runs in req-router after workspaces are created
 
   conv-mgr:
-    image: public.ecr.aws/n5k3t9x2/conv_mgr:latest
+    image: ${DK_CONV_MGR_IMAGE:-public.ecr.aws/n5k3t9x2/conv_mgr}:${DK_CONV_MGR_TAG:-latest}
     networks:
       - saaslocalnetwork
     depends_on:
@@ -74,7 +74,7 @@ services:
       - PYTHONUNBUFFERED=1
 
   apigateway:
-    image: public.ecr.aws/n5k3t9x2/apigateway:latest
+    image: ${DK_APIGATEWAY_IMAGE:-public.ecr.aws/n5k3t9x2/apigateway}:${DK_APIGATEWAY_TAG:-latest}
     networks:
       - saaslocalnetwork
     depends_on:
@@ -86,12 +86,12 @@ services:
     restart: on-failure
 
   ansi-processing:
-    image: public.ecr.aws/n5k3t9x2/ansi_processing:latest
+    image: ${DK_ANSI_PROCESSING_IMAGE:-public.ecr.aws/n5k3t9x2/ansi_processing}:${DK_ANSI_PROCESSING_TAG:-latest}
     networks:
       - saaslocalnetwork
 
   settings:
-    image: public.ecr.aws/n5k3t9x2/settings:latest
+    image: ${DK_SETTINGS_IMAGE:-public.ecr.aws/n5k3t9x2/settings}:${DK_SETTINGS_TAG:-latest}
     networks:
       - saaslocalnetwork
     depends_on:
@@ -115,7 +115,7 @@ services:
       - GEVENT_SUPPORT=True
     command: ["python", "src/settings.py"]
   wsfe:
-    image: public.ecr.aws/n5k3t9x2/wsfe:latest
+    image: ${DK_WSFE_IMAGE:-public.ecr.aws/n5k3t9x2/wsfe}:${DK_WSFE_TAG:-latest}
     restart: unless-stopped
     networks:
       - saaslocalnetwork
@@ -128,7 +128,7 @@ services:
       - POSTGRESQL_DB_NAME=${POSTGRESQL_DB_NAME}
 
   jobsched:
-    image: public.ecr.aws/n5k3t9x2/jobsched:latest
+    image: ${DK_JOBSCHED_IMAGE:-public.ecr.aws/n5k3t9x2/jobsched}:${DK_JOBSCHED_TAG:-latest}
     networks:
       - saaslocalnetwork
     depends_on:
@@ -146,7 +146,7 @@ services:
 
 
   taskservice:
-    image: public.ecr.aws/n5k3t9x2/taskservice:latest
+    image: ${DK_TASKSERVICE_IMAGE:-public.ecr.aws/n5k3t9x2/taskservice}:${DK_TASKSERVICE_TAG:-latest}
     networks:
       - saaslocalnetwork
     command: ["python", "src/gateway.py"]
@@ -201,7 +201,7 @@ services:
       - 443:443
 
   dagknows-nuxt:
-    image: public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest
+    image: ${DK_DAGKNOWS_NUXT_IMAGE:-public.ecr.aws/n5k3t9x2/dagknows_nuxt}:${DK_DAGKNOWS_NUXT_TAG:-latest}
     networks:
       - saaslocalnetwork
     command: node .output/server/index.mjs

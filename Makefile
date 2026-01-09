@@ -5,6 +5,7 @@ LOG_DIR=./logs
 LOG_PID_FILE=./logs/.capture.pid
 
 .PHONY: logs logs-start logs-stop logs-today logs-errors logs-service logs-search logs-rotate logs-status logs-clean logs-cron-install logs-cron-remove logdirs
+.PHONY: version version-history version-pull version-set rollback rollback-service rollback-to update-safe check-updates ecr-login migrate-versions
 
 encrypt:
 	gpg -c .env
@@ -115,7 +116,17 @@ update: down pull build
 
 up: ensurenetworks logdirs
 	gpg -o .env -d .env.gpg
-	docker compose -f docker-compose.yml up -d
+	@# Generate versions.env from manifest if it exists
+	@if [ -f "version-manifest.yaml" ]; then \
+		python3 version-manager.py generate-env 2>/dev/null || true; \
+	fi
+	@# Start services with version env if available
+	@if [ -f "versions.env" ]; then \
+		set -a && . ./versions.env && set +a && \
+		docker compose -f docker-compose.yml up -d; \
+	else \
+		docker compose -f docker-compose.yml up -d; \
+	fi
 	sleep 5
 	rm -f .env
 	@echo "Starting background log capture..."
@@ -126,6 +137,23 @@ ensurenetworks:
 	-@docker network create saaslocalnetwork
 
 pull:
+	@# Pull images from manifest if available, otherwise pull latest
+	@if [ -f "version-manifest.yaml" ]; then \
+		python3 version-manager.py pull-from-manifest; \
+	else \
+		docker pull public.ecr.aws/n5k3t9x2/wsfe:latest; \
+		docker pull public.ecr.aws/n5k3t9x2/ansi_processing:latest; \
+		docker pull public.ecr.aws/n5k3t9x2/jobsched:latest; \
+		docker pull public.ecr.aws/n5k3t9x2/apigateway:latest; \
+		docker pull public.ecr.aws/n5k3t9x2/conv_mgr:latest; \
+		docker pull public.ecr.aws/n5k3t9x2/settings:latest; \
+		docker pull public.ecr.aws/n5k3t9x2/taskservice:latest; \
+		docker pull public.ecr.aws/n5k3t9x2/req_router:latest; \
+		docker pull public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest; \
+	fi
+
+# Pull latest images (ignores manifest)
+pull-latest:
 	docker pull public.ecr.aws/n5k3t9x2/wsfe:latest
 	docker pull public.ecr.aws/n5k3t9x2/ansi_processing:latest
 	docker pull public.ecr.aws/n5k3t9x2/jobsched:latest
@@ -212,4 +240,127 @@ help:
 	@echo "  make update       - Update to latest version"
 	@echo "  make backups      - Backup all data"
 	@echo ""
+	@echo "Version Management:"
+	@echo "  make version       - Show current deployed versions"
+	@echo "  make check-updates - Check for available updates"
+	@echo "  make update-safe   - Safe update with backup and rollback"
+	@echo "  make rollback      - Rollback to previous versions"
+	@echo "  make help-version  - Show all version management commands"
+	@echo ""
 	@echo "Note: Commands that access encrypted files will prompt for password"
+
+# ============================================
+# VERSION MANAGEMENT
+# ============================================
+
+# Show current deployed versions
+version:
+	@python3 version-manager.py show
+
+# Show version history
+version-history:
+	@python3 version-manager.py history $(SERVICE)
+
+# Pull specific version
+# Usage: make version-pull TAG=v1.2.3 [SERVICE=taskservice]
+version-pull:
+	@if [ -z "$(TAG)" ]; then \
+		echo "Error: TAG is required. Usage: make version-pull TAG=v1.2.3"; \
+		exit 1; \
+	fi
+	@python3 version-manager.py pull --tag=$(TAG) $(if $(SERVICE),--service=$(SERVICE),)
+
+# Set custom version for hotfixes
+# Usage: make version-set SERVICE=taskservice TAG=v1.2.3-hotfix
+version-set:
+	@if [ -z "$(SERVICE)" ] || [ -z "$(TAG)" ]; then \
+		echo "Error: SERVICE and TAG are required."; \
+		echo "Usage: make version-set SERVICE=taskservice TAG=v1.2.3-hotfix"; \
+		exit 1; \
+	fi
+	@python3 version-manager.py set --service=$(SERVICE) --tag=$(TAG)
+
+# Rollback all services to previous version
+rollback:
+	@python3 version-manager.py rollback --all
+
+# Rollback specific service to previous version
+# Usage: make rollback-service SERVICE=taskservice
+rollback-service:
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "Error: SERVICE is required. Usage: make rollback-service SERVICE=taskservice"; \
+		exit 1; \
+	fi
+	@python3 version-manager.py rollback --service=$(SERVICE)
+
+# Rollback to specific tag
+# Usage: make rollback-to SERVICE=taskservice TAG=v1.2.1
+rollback-to:
+	@if [ -z "$(SERVICE)" ] || [ -z "$(TAG)" ]; then \
+		echo "Error: SERVICE and TAG are required."; \
+		echo "Usage: make rollback-to SERVICE=taskservice TAG=v1.2.1"; \
+		exit 1; \
+	fi
+	@python3 version-manager.py rollback --service=$(SERVICE) --tag=$(TAG)
+
+# Safe update with automatic backup and rollback on failure
+update-safe:
+	@python3 version-manager.py update-safe $(if $(TAG),--tag=$(TAG),)
+
+# Check for available updates
+check-updates:
+	@python3 version-manager.py check-updates
+
+# Login to private ECR
+ecr-login:
+	@python3 version-manager.py ecr-login
+
+# Migrate existing deployment to versioned
+migrate-versions:
+	@python3 migrate-to-versioned.py
+
+# Generate versions.env from manifest
+generate-env:
+	@python3 version-manager.py generate-env
+
+# Friendly aliases
+upgrade: update-safe
+downgrade: rollback
+whatversion: version
+info: status version
+health: status check-updates
+
+# Version management help
+help-version:
+	@echo "DagKnows Version Management Commands"
+	@echo "====================================="
+	@echo ""
+	@echo "View Versions:"
+	@echo "  make version                         - Show current deployed versions"
+	@echo "  make version-history                 - Show version history for all services"
+	@echo "  make version-history SERVICE=x       - Show history for specific service"
+	@echo ""
+	@echo "Update:"
+	@echo "  make update-safe                     - Safe update with backup (recommended)"
+	@echo "  make update-safe TAG=v1.2.3          - Update to specific version"
+	@echo "  make version-pull TAG=v1.2.3         - Pull specific version for all services"
+	@echo "  make version-pull TAG=v1.2.3 SERVICE=x  - Pull for specific service"
+	@echo "  make version-set SERVICE=x TAG=y     - Set custom version (for hotfixes)"
+	@echo "  make check-updates                   - Check for available updates"
+	@echo ""
+	@echo "Rollback:"
+	@echo "  make rollback                        - Rollback all services to previous"
+	@echo "  make rollback-service SERVICE=x      - Rollback specific service"
+	@echo "  make rollback-to SERVICE=x TAG=y     - Rollback to specific version"
+	@echo ""
+	@echo "Migration & ECR:"
+	@echo "  make migrate-versions                - Migrate existing deployment to versioned"
+	@echo "  make ecr-login                       - Login to private ECR"
+	@echo "  make generate-env                    - Regenerate versions.env from manifest"
+	@echo ""
+	@echo "Aliases:"
+	@echo "  make upgrade      = make update-safe"
+	@echo "  make downgrade    = make rollback"
+	@echo "  make whatversion  = make version"
+	@echo "  make info         = make status version"
+	@echo "  make health       = make status check-updates"

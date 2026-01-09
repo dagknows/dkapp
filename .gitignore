@@ -13,6 +13,10 @@ __pycache__/
 tls/
 logs/
 
+# Version management (auto-generated, deployment-specific)
+versions.env
+.version-backups/
+
 # C extensions
 *.so
 

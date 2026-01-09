@@ -1,0 +1,846 @@
+#!/usr/bin/env python3
+"""
+DagKnows Version Manager
+Manages service versions, rollbacks, and deployments for dkapp on-prem installations.
+
+Usage:
+    python3 version-manager.py show                          # Show current versions
+    python3 version-manager.py history [SERVICE]             # Show version history
+    python3 version-manager.py pull --tag=TAG [--service=S]  # Pull specific version
+    python3 version-manager.py rollback --service=S          # Rollback to previous
+    python3 version-manager.py set --service=S --tag=TAG     # Set custom version
+    python3 version-manager.py update-safe [--tag=TAG]       # Safe update with rollback
+    python3 version-manager.py check-updates                 # Check for available updates
+    python3 version-manager.py generate-env                  # Generate versions.env
+    python3 version-manager.py pull-from-manifest            # Pull versions from manifest
+    python3 version-manager.py ecr-login                     # Login to private ECR
+"""
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+import yaml
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+
+# ============================================
+# CONSTANTS
+# ============================================
+
+SERVICES = [
+    'req_router',
+    'taskservice',
+    'settings',
+    'conv_mgr',
+    'wsfe',
+    'jobsched',
+    'apigateway',
+    'ansi_processing',
+    'dagknows_nuxt'
+]
+
+# Map service names to docker-compose service names
+SERVICE_TO_COMPOSE = {
+    'req_router': 'req-router',
+    'taskservice': 'taskservice',
+    'settings': 'settings',
+    'conv_mgr': 'conv-mgr',
+    'wsfe': 'wsfe',
+    'jobsched': 'jobsched',
+    'apigateway': 'apigateway',
+    'ansi_processing': 'ansi-processing',
+    'dagknows_nuxt': 'dagknows-nuxt'
+}
+
+DEFAULT_REGISTRY = 'public.ecr.aws/n5k3t9x2'
+HISTORY_LIMIT = 5
+
+
+# ============================================
+# COLORS AND OUTPUT
+# ============================================
+
+class Colors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+
+
+def print_header(text: str):
+    """Print a formatted header"""
+    print(f"\n{Colors.HEADER}{Colors.BOLD}{'='*60}{Colors.ENDC}")
+    print(f"{Colors.HEADER}{Colors.BOLD}{text:^60}{Colors.ENDC}")
+    print(f"{Colors.HEADER}{Colors.BOLD}{'='*60}{Colors.ENDC}\n")
+
+
+def print_success(text: str):
+    """Print success message"""
+    print(f"{Colors.OKGREEN}\u2713 {text}{Colors.ENDC}")
+
+
+def print_error(text: str):
+    """Print error message"""
+    print(f"{Colors.FAIL}\u2717 {text}{Colors.ENDC}")
+
+
+def print_warning(text: str):
+    """Print warning message"""
+    print(f"{Colors.WARNING}\u26a0 {text}{Colors.ENDC}")
+
+
+def print_info(text: str):
+    """Print info message"""
+    print(f"{Colors.OKBLUE}\u2139 {text}{Colors.ENDC}")
+
+
+def print_check(name: str, status: bool, message: str = ""):
+    """Print a check result with alignment"""
+    if status:
+        symbol = f"{Colors.OKGREEN}\u2713{Colors.ENDC}"
+        status_text = f"{Colors.OKGREEN}OK{Colors.ENDC}"
+    else:
+        symbol = f"{Colors.FAIL}\u2717{Colors.ENDC}"
+        status_text = f"{Colors.FAIL}FAILED{Colors.ENDC}"
+
+    print(f"{symbol} {name:.<50} {status_text}")
+    if message:
+        print(f"  {Colors.WARNING}\u2192 {message}{Colors.ENDC}")
+
+
+# ============================================
+# UTILITIES
+# ============================================
+
+def run_command(cmd: str, capture: bool = True, timeout: int = 300) -> Tuple[bool, str]:
+    """Run a shell command and return success status and output"""
+    try:
+        if capture:
+            result = subprocess.run(
+                cmd, shell=True, capture_output=True, text=True, timeout=timeout
+            )
+            return result.returncode == 0, result.stdout.strip()
+        else:
+            result = subprocess.run(cmd, shell=True, timeout=timeout)
+            return result.returncode == 0, ""
+    except subprocess.TimeoutExpired:
+        return False, "Command timed out"
+    except Exception as e:
+        return False, str(e)
+
+
+def confirm(prompt: str, default: bool = False) -> bool:
+    """Ask for user confirmation"""
+    suffix = " (yes/no) [no]: " if not default else " (yes/no) [yes]: "
+    response = input(prompt + suffix).strip().lower()
+    if not response:
+        return default
+    return response in ('yes', 'y')
+
+
+# ============================================
+# VERSION MANAGER CLASS
+# ============================================
+
+class VersionManager:
+    def __init__(self):
+        self.manifest_file = 'version-manifest.yaml'
+        self.versions_env = 'versions.env'
+        self.backup_dir = '.version-backups'
+        self.manifest = self.load_manifest()
+
+    def load_manifest(self) -> Dict:
+        """Load version manifest or create default"""
+        if os.path.exists(self.manifest_file):
+            with open(self.manifest_file, 'r') as f:
+                return yaml.safe_load(f) or self.create_default_manifest()
+        return self.create_default_manifest()
+
+    def create_default_manifest(self) -> Dict:
+        """Create a default manifest structure"""
+        return {
+            'schema_version': '1.0',
+            'deployment_id': f'dkapp-{datetime.now().strftime("%Y%m%d")}',
+            'customer_id': '',
+            'ecr': {
+                'registry': 'public.ecr.aws',
+                'repository_alias': 'n5k3t9x2',
+                'use_private': False,
+                'private_registry': '',
+                'private_region': 'us-east-1'
+            },
+            'services': {},
+            'history': {},
+            'custom_overrides': {}
+        }
+
+    def save_manifest(self):
+        """Save manifest with backup"""
+        self.backup_manifest()
+        with open(self.manifest_file, 'w') as f:
+            yaml.dump(self.manifest, f, default_flow_style=False, sort_keys=False)
+
+    def backup_manifest(self):
+        """Backup current manifest before changes"""
+        if os.path.exists(self.manifest_file):
+            os.makedirs(self.backup_dir, exist_ok=True)
+            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            backup_path = f"{self.backup_dir}/{self.manifest_file}.{timestamp}"
+            shutil.copy(self.manifest_file, backup_path)
+            return backup_path
+        return None
+
+    def get_registry(self) -> str:
+        """Get current registry URL"""
+        ecr = self.manifest.get('ecr', {})
+        if ecr.get('use_private') and ecr.get('private_registry'):
+            return ecr.get('private_registry')
+        registry = ecr.get('registry', 'public.ecr.aws')
+        alias = ecr.get('repository_alias', 'n5k3t9x2')
+        return f"{registry}/{alias}"
+
+    def get_full_image(self, service: str, tag: str = None) -> str:
+        """Get full image name with registry and tag"""
+        registry = self.get_registry()
+        if tag is None:
+            tag = self.get_current_tag(service)
+        return f"{registry}/{service}:{tag}"
+
+    def get_current_tag(self, service: str) -> str:
+        """Get current tag for a service"""
+        # Check custom overrides first
+        override = self.manifest.get('custom_overrides', {}).get(service, {})
+        if override.get('tag'):
+            return override['tag']
+        # Then check services
+        return self.manifest.get('services', {}).get(service, {}).get('current_tag', 'latest')
+
+    def get_previous_tag(self, service: str) -> Optional[str]:
+        """Get previous tag for a service from history"""
+        history = self.manifest.get('history', {}).get(service, [])
+        for entry in history:
+            if entry.get('status') == 'previous':
+                return entry.get('tag')
+        # If no 'previous' status, try second entry
+        if len(history) > 1:
+            return history[1].get('tag')
+        return None
+
+    # ==================
+    # SHOW COMMANDS
+    # ==================
+
+    def show(self):
+        """Display current versions"""
+        print_header("Current Deployed Versions")
+
+        services = self.manifest.get('services', {})
+        overrides = self.manifest.get('custom_overrides', {})
+
+        if not services:
+            print_warning("No versions tracked yet. Run 'make migrate-versions' to initialize.")
+            return
+
+        for name in SERVICES:
+            info = services.get(name, {})
+            tag = info.get('current_tag', 'unknown')
+            deployed = info.get('deployed_at', '')[:10] if info.get('deployed_at') else 'unknown'
+
+            # Check for override
+            override = overrides.get(name, {})
+            if override.get('tag'):
+                tag = override['tag']
+                reason = override.get('reason', 'custom')
+                print(f"  {name:.<40} {tag:<15} ({deployed}) [{reason}]")
+            else:
+                print(f"  {name:.<40} {tag:<15} ({deployed})")
+
+        print()
+
+    def history(self, service: str = None):
+        """Show version history"""
+        print_header("Version History")
+
+        history = self.manifest.get('history', {})
+
+        if not history:
+            print_warning("No version history available.")
+            return
+
+        if service:
+            if service in history:
+                print(f"\n{Colors.BOLD}{service}:{Colors.ENDC}")
+                for entry in history[service][:HISTORY_LIMIT]:
+                    tag = entry.get('tag', 'unknown')
+                    deployed = entry.get('deployed_at', '')[:19] if entry.get('deployed_at') else 'unknown'
+                    status = entry.get('status', '')
+                    status_str = f" [{status}]" if status else ""
+                    print(f"  {tag:<20} {deployed:<25} {status_str}")
+            else:
+                print_warning(f"No history for service: {service}")
+        else:
+            for svc in SERVICES:
+                entries = history.get(svc, [])
+                if entries:
+                    print(f"\n{Colors.BOLD}{svc}:{Colors.ENDC}")
+                    for entry in entries[:HISTORY_LIMIT]:
+                        tag = entry.get('tag', 'unknown')
+                        deployed = entry.get('deployed_at', '')[:19] if entry.get('deployed_at') else 'unknown'
+                        status = entry.get('status', '')
+                        status_str = f" [{status}]" if status else ""
+                        print(f"  {tag:<20} {deployed:<25} {status_str}")
+        print()
+
+    # ==================
+    # PULL COMMANDS
+    # ==================
+
+    def pull(self, tag: str, service: str = None):
+        """Pull specific version(s)"""
+        print_header(f"Pulling Version: {tag}")
+
+        services_to_pull = [service] if service else SERVICES
+        registry = self.get_registry()
+
+        success_count = 0
+        for svc in services_to_pull:
+            image = f"{registry}/{svc}:{tag}"
+            print_info(f"Pulling {image}...")
+
+            success, output = run_command(f"docker pull {image}")
+            if success:
+                print_success(f"Pulled {svc}:{tag}")
+                self.update_service_version(svc, tag)
+                success_count += 1
+            else:
+                print_error(f"Failed to pull {svc}:{tag}")
+                print(f"  {output}")
+
+        if success_count > 0:
+            self.save_manifest()
+            print_success(f"\nPulled {success_count}/{len(services_to_pull)} services")
+            print_info("Run 'make up' to apply changes")
+        else:
+            print_error("No images were pulled successfully")
+
+    def pull_from_manifest(self):
+        """Pull versions specified in manifest"""
+        print_header("Pulling Versions from Manifest")
+
+        services = self.manifest.get('services', {})
+        if not services:
+            print_warning("No versions in manifest. Using :latest for all services.")
+            self.pull('latest')
+            return
+
+        registry = self.get_registry()
+        success_count = 0
+
+        for name in SERVICES:
+            tag = self.get_current_tag(name)
+            image = f"{registry}/{name}:{tag}"
+            print_info(f"Pulling {image}...")
+
+            success, _ = run_command(f"docker pull {image}")
+            if success:
+                print_success(f"Pulled {name}:{tag}")
+                success_count += 1
+            else:
+                print_error(f"Failed to pull {name}:{tag}")
+
+        print_success(f"\nPulled {success_count}/{len(SERVICES)} services")
+
+    # ==================
+    # ROLLBACK COMMANDS
+    # ==================
+
+    def rollback(self, service: str = None, tag: str = None, all_services: bool = False, interactive: bool = True):
+        """Rollback to previous version"""
+        print_header("DagKnows Rollback")
+
+        if all_services:
+            services_to_rollback = SERVICES
+        elif service:
+            services_to_rollback = [service]
+        else:
+            print_error("Specify --service or --all")
+            return False
+
+        # Show what will be rolled back
+        rollback_plan = []
+        for svc in services_to_rollback:
+            current = self.get_current_tag(svc)
+            if tag:
+                target = tag
+            else:
+                target = self.get_previous_tag(svc)
+
+            if target and target != current:
+                rollback_plan.append((svc, current, target))
+
+        if not rollback_plan:
+            print_warning("No services to rollback (no previous versions available)")
+            return False
+
+        # Show plan
+        print("Services to rollback:\n")
+        for svc, current, target in rollback_plan:
+            print(f"  {svc}: {current} \u2192 {target}")
+        print()
+
+        # Confirm if interactive
+        if interactive:
+            if not confirm("Proceed with rollback?"):
+                print("Rollback cancelled.")
+                return False
+
+        # Execute rollback
+        registry = self.get_registry()
+        success_count = 0
+
+        for svc, current, target in rollback_plan:
+            print_info(f"Rolling back {svc} to {target}...")
+
+            # Pull the target image
+            image = f"{registry}/{svc}:{target}"
+            success, _ = run_command(f"docker pull {image}")
+
+            if not success:
+                print_error(f"Failed to pull {svc}:{target}")
+                continue
+
+            # Update manifest
+            self.update_service_version(svc, target, is_rollback=True)
+            success_count += 1
+            print_success(f"Rolled back {svc}: {current} \u2192 {target}")
+
+        if success_count > 0:
+            self.save_manifest()
+            self.generate_env()
+            print_success(f"\nRolled back {success_count} service(s)")
+            print_info("Run 'make up' to apply changes")
+            return True
+        else:
+            print_error("Rollback failed")
+            return False
+
+    # ==================
+    # UPDATE COMMANDS
+    # ==================
+
+    def set_version(self, service: str, tag: str):
+        """Set specific version for a service (for hotfixes)"""
+        print_header(f"Setting Custom Version")
+
+        if service not in SERVICES:
+            print_error(f"Unknown service: {service}")
+            print_info(f"Valid services: {', '.join(SERVICES)}")
+            return False
+
+        # Pull the image first
+        registry = self.get_registry()
+        image = f"{registry}/{service}:{tag}"
+        print_info(f"Pulling {image}...")
+
+        success, output = run_command(f"docker pull {image}")
+        if not success:
+            print_error(f"Failed to pull image: {image}")
+            print(f"  {output}")
+            return False
+
+        print_success(f"Pulled {service}:{tag}")
+
+        # Update manifest
+        self.update_service_version(service, tag)
+
+        # Also add to custom_overrides for tracking
+        if 'custom_overrides' not in self.manifest:
+            self.manifest['custom_overrides'] = {}
+
+        self.manifest['custom_overrides'][service] = {
+            'tag': tag,
+            'reason': 'Custom version set via CLI',
+            'applied_at': datetime.now().isoformat()
+        }
+
+        self.save_manifest()
+        self.generate_env()
+
+        print_success(f"Set {service} to {tag}")
+        print_info("Run 'make up' to apply changes")
+        return True
+
+    def update_safe(self, tag: str = None):
+        """Safe update with automatic backup and rollback on failure"""
+        print_header("DagKnows Safe Update")
+
+        target_tag = tag or 'latest'
+
+        # Step 1: Create backup
+        print_info("Creating backup before update...")
+        backup_path = self.backup_manifest()
+        if backup_path:
+            print_success(f"Backup created: {backup_path}")
+
+        # Also backup data if needed
+        print_info("Creating data backup...")
+        success, _ = run_command("make backups", capture=False)
+        if success:
+            print_success("Data backup created")
+        else:
+            print_warning("Data backup skipped (may require manual backup)")
+
+        # Step 2: Pull new images
+        print_info(f"Pulling images ({target_tag})...")
+        registry = self.get_registry()
+        pulled_services = []
+
+        for svc in SERVICES:
+            image = f"{registry}/{svc}:{target_tag}"
+            success, _ = run_command(f"docker pull {image}")
+            if success:
+                pulled_services.append(svc)
+                print(f"  \u2713 {svc}")
+            else:
+                print(f"  \u2717 {svc} (failed)")
+
+        if len(pulled_services) < len(SERVICES):
+            print_warning(f"Only {len(pulled_services)}/{len(SERVICES)} images pulled")
+            if not confirm("Continue with partial update?"):
+                print("Update cancelled.")
+                return False
+
+        print_success("Images pulled successfully")
+
+        # Step 3: Stop services
+        print_info("Stopping services...")
+        run_command("docker compose down")
+        print_success("Services stopped")
+
+        # Step 4: Update manifest
+        for svc in pulled_services:
+            self.update_service_version(svc, target_tag)
+        self.save_manifest()
+        self.generate_env()
+
+        # Step 5: Start services
+        print_info("Starting services with new images...")
+        success, _ = run_command("make up", capture=False)
+        if not success:
+            print_error("Failed to start services")
+            return False
+
+        # Step 6: Health check
+        print_info("Waiting for services to initialize (30s)...")
+        time.sleep(30)
+
+        print_info("Verifying service health...")
+        if self.verify_health():
+            print_success("All services healthy!")
+            print_success("Update completed successfully!")
+            return True
+        else:
+            print_error("Health check failed!")
+            if confirm("Rollback to previous version?"):
+                self.rollback(all_services=True, interactive=False)
+                run_command("make up", capture=False)
+                print_warning("Rolled back to previous version")
+            return False
+
+    def check_updates(self):
+        """Check for available updates (placeholder - requires ECR API access)"""
+        print_header("Available Updates")
+
+        print_info("Checking for updates...")
+        print()
+
+        # For now, just show current versions and suggest checking ECR
+        services = self.manifest.get('services', {})
+
+        for name in SERVICES:
+            current = self.get_current_tag(name)
+            if current == 'latest':
+                print(f"  \u2713 {name}: latest (always up to date)")
+            else:
+                print(f"  ? {name}: {current} (check ECR for newer versions)")
+
+        print()
+        print_info("To check for updates, visit:")
+        print(f"  https://gallery.ecr.aws/n5k3t9x2")
+        print()
+        print_info("To update to latest:")
+        print(f"  make update-safe")
+        print()
+
+    # ==================
+    # ECR COMMANDS
+    # ==================
+
+    def ecr_login(self):
+        """Login to private ECR"""
+        print_header("ECR Login")
+
+        ecr = self.manifest.get('ecr', {})
+
+        if not ecr.get('use_private') or not ecr.get('private_registry'):
+            print_info("Using public ECR - no authentication required")
+            return True
+
+        region = ecr.get('private_region', 'us-east-1')
+        registry = ecr.get('private_registry')
+
+        print_info(f"Logging into private ECR: {registry}")
+
+        cmd = f"aws ecr get-login-password --region {region} | docker login --username AWS --password-stdin {registry}"
+        success, output = run_command(cmd)
+
+        if success:
+            print_success("Successfully logged into ECR")
+            return True
+        else:
+            print_error("Failed to login to ECR")
+            print(f"  {output}")
+            print_info("Make sure AWS CLI is configured with valid credentials")
+            return False
+
+    # ==================
+    # HELPER METHODS
+    # ==================
+
+    def update_service_version(self, service: str, tag: str, is_rollback: bool = False):
+        """Update service version in manifest"""
+        now = datetime.now().isoformat()
+
+        # Initialize services dict if needed
+        if 'services' not in self.manifest:
+            self.manifest['services'] = {}
+
+        # Get old tag for history
+        old_info = self.manifest['services'].get(service, {})
+        old_tag = old_info.get('current_tag')
+
+        # Update current version
+        registry = self.get_registry()
+
+        # Get image digest
+        digest = ""
+        success, output = run_command(f"docker inspect --format='{{{{.RepoDigests}}}}' {registry}/{service}:{tag}")
+        if success:
+            digest = output
+
+        self.manifest['services'][service] = {
+            'image': f"{registry}/{service}",
+            'current_tag': tag,
+            'deployed_at': now,
+            'deployed_by': os.environ.get('USER', 'system'),
+            'image_digest': digest
+        }
+
+        # Update history
+        if 'history' not in self.manifest:
+            self.manifest['history'] = {}
+
+        if service not in self.manifest['history']:
+            self.manifest['history'][service] = []
+
+        # Mark existing entries
+        for entry in self.manifest['history'][service]:
+            if entry.get('status') == 'current':
+                entry['status'] = 'rolled-back' if is_rollback else 'previous'
+            elif entry.get('status') == 'previous':
+                entry['status'] = 'archived'
+
+        # Add new entry
+        self.manifest['history'][service].insert(0, {
+            'tag': tag,
+            'deployed_at': now,
+            'status': 'current'
+        })
+
+        # Keep only last HISTORY_LIMIT entries
+        self.manifest['history'][service] = self.manifest['history'][service][:HISTORY_LIMIT]
+
+        # Clear custom override if setting standard version
+        if service in self.manifest.get('custom_overrides', {}):
+            if not is_rollback:  # Keep override info on rollback
+                del self.manifest['custom_overrides'][service]
+
+    def generate_env(self):
+        """Generate versions.env from manifest"""
+        print_info("Generating versions.env...")
+
+        registry = self.get_registry()
+
+        lines = [
+            "# DagKnows Service Versions",
+            "# Auto-generated from version-manifest.yaml - DO NOT EDIT MANUALLY",
+            f"# Generated: {datetime.now().isoformat()}",
+            "",
+            f"DK_ECR_REGISTRY={registry}",
+            ""
+        ]
+
+        for name in SERVICES:
+            var_name = name.upper()
+            image = f"{registry}/{name}"
+            tag = self.get_current_tag(name)
+
+            lines.append(f"DK_{var_name}_IMAGE={image}")
+            lines.append(f"DK_{var_name}_TAG={tag}")
+            lines.append("")
+
+        with open(self.versions_env, 'w') as f:
+            f.write('\n'.join(lines))
+
+        print_success(f"Generated {self.versions_env}")
+
+    def verify_health(self) -> bool:
+        """Verify all services are healthy"""
+        success, output = run_command("docker compose ps --format json")
+        if not success:
+            return False
+
+        try:
+            healthy_count = 0
+            total_count = 0
+
+            for line in output.strip().split('\n'):
+                if not line.strip():
+                    continue
+                container = json.loads(line)
+                service = container.get('Service', '')
+                state = container.get('State', '')
+                health = container.get('Health', '')
+
+                if service in SERVICE_TO_COMPOSE.values():
+                    total_count += 1
+                    if state == 'running':
+                        if health in ('healthy', ''):  # Empty health means no healthcheck defined
+                            healthy_count += 1
+                            print(f"  \u2713 {service}: {state}" + (f" [{health}]" if health else ""))
+                        else:
+                            print(f"  \u2717 {service}: {state} [{health}]")
+                    else:
+                        print(f"  \u2717 {service}: {state}")
+
+            return healthy_count >= total_count * 0.8  # Allow 80% healthy for partial success
+        except json.JSONDecodeError:
+            return False
+
+
+# ============================================
+# MAIN
+# ============================================
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='DagKnows Version Manager',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s show                              Show current versions
+  %(prog)s history                           Show all version history
+  %(prog)s history taskservice               Show history for taskservice
+  %(prog)s pull --tag=v1.2.3                 Pull v1.2.3 for all services
+  %(prog)s pull --tag=v1.2.3 --service=wsfe  Pull v1.2.3 for wsfe only
+  %(prog)s rollback --service=taskservice    Rollback taskservice to previous
+  %(prog)s rollback --all                    Rollback all services
+  %(prog)s set --service=wsfe --tag=v1.2.3-hotfix  Set custom version
+  %(prog)s update-safe                       Safe update with rollback
+  %(prog)s check-updates                     Check for available updates
+        """
+    )
+
+    subparsers = parser.add_subparsers(dest='command', help='Commands')
+
+    # Show command
+    subparsers.add_parser('show', help='Show current deployed versions')
+
+    # History command
+    history_parser = subparsers.add_parser('history', help='Show version history')
+    history_parser.add_argument('service', nargs='?', help='Service name (optional)')
+
+    # Pull command
+    pull_parser = subparsers.add_parser('pull', help='Pull specific version')
+    pull_parser.add_argument('--tag', required=True, help='Tag to pull')
+    pull_parser.add_argument('--service', help='Specific service (optional)')
+
+    # Pull from manifest
+    subparsers.add_parser('pull-from-manifest', help='Pull versions from manifest')
+
+    # Rollback command
+    rollback_parser = subparsers.add_parser('rollback', help='Rollback to previous version')
+    rollback_parser.add_argument('--service', help='Service to rollback')
+    rollback_parser.add_argument('--tag', help='Specific tag to rollback to')
+    rollback_parser.add_argument('--all', action='store_true', help='Rollback all services')
+
+    # Set command
+    set_parser = subparsers.add_parser('set', help='Set specific version for a service')
+    set_parser.add_argument('--service', required=True, help='Service name')
+    set_parser.add_argument('--tag', required=True, help='Version tag')
+
+    # Update safe command
+    update_parser = subparsers.add_parser('update-safe', help='Safe update with backup and rollback')
+    update_parser.add_argument('--tag', help='Target version (default: latest)')
+
+    # Check updates command
+    subparsers.add_parser('check-updates', help='Check for available updates')
+
+    # Generate env command
+    subparsers.add_parser('generate-env', help='Generate versions.env from manifest')
+
+    # ECR login command
+    subparsers.add_parser('ecr-login', help='Login to private ECR')
+
+    args = parser.parse_args()
+
+    # Change to script directory
+    script_dir = Path(__file__).parent.absolute()
+    os.chdir(script_dir)
+
+    vm = VersionManager()
+
+    if args.command == 'show':
+        vm.show()
+    elif args.command == 'history':
+        vm.history(getattr(args, 'service', None))
+    elif args.command == 'pull':
+        vm.pull(args.tag, args.service)
+    elif args.command == 'pull-from-manifest':
+        vm.pull_from_manifest()
+    elif args.command == 'rollback':
+        vm.rollback(args.service, args.tag, args.all)
+    elif args.command == 'set':
+        vm.set_version(args.service, args.tag)
+    elif args.command == 'update-safe':
+        vm.update_safe(getattr(args, 'tag', None))
+    elif args.command == 'check-updates':
+        vm.check_updates()
+    elif args.command == 'generate-env':
+        vm.generate_env()
+    elif args.command == 'ecr-login':
+        vm.ecr_login()
+    else:
+        parser.print_help()
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print(f"\n{Colors.WARNING}Operation cancelled{Colors.ENDC}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n{Colors.FAIL}Error: {e}{Colors.ENDC}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
