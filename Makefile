@@ -3,7 +3,7 @@ DATE_SUFFIX=${shell date +"%Y%m%d%H%M%S"}
 DATAROOT=.
 LOG_DIR=./logs
 
-
+.PHONY: logs logs-start logs-stop logs-today logs-errors logs-service logs-search logs-rotate logs-status logs-clean logs-cron-install logs-cron-remove logdirs
 
 encrypt:
 	gpg -c .env
