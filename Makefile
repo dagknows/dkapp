@@ -17,7 +17,7 @@ logdirs:
 	@mkdir -p $(LOG_DIR)
 
 logs-capture: logdirs
-	docker compose logs -f | tee $(LOG_DIR)/$$(date +%Y-%m-%d).log
+	docker compose logs -f | tee -a $(LOG_DIR)/$$(date +%Y-%m-%d).log
 
 logs-capture-bg: logdirs
 	@echo "Capturing logs in background to $(LOG_DIR)/$$(date +%Y-%m-%d).log"
