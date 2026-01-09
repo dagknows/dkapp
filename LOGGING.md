@@ -213,8 +213,8 @@ make logs-status
 ### Log capture not running
 
 ```bash
-# Check if capture is running
-pgrep -f "docker compose logs"
+# Check if capture is running (uses PID file)
+cat ./logs/.capture.pid 2>/dev/null && echo "PID file exists"
 
 # Manually start if needed
 make logs-start

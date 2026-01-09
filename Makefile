@@ -2,6 +2,7 @@
 DATE_SUFFIX=${shell date +"%Y%m%d%H%M%S"}
 DATAROOT=.
 LOG_DIR=./logs
+LOG_PID_FILE=./logs/.capture.pid
 
 .PHONY: logs logs-start logs-stop logs-today logs-errors logs-service logs-search logs-rotate logs-status logs-clean logs-cron-install logs-cron-remove logdirs
 
@@ -17,18 +18,20 @@ logdirs:
 	@mkdir -p $(LOG_DIR)
 
 logs-start: logdirs
-	@if pgrep -f "docker compose logs -f" > /dev/null; then \
-		echo "Log capture already running"; \
+	@if [ -f $(LOG_PID_FILE) ] && kill -0 $$(cat $(LOG_PID_FILE)) 2>/dev/null; then \
+		echo "Log capture already running (PID: $$(cat $(LOG_PID_FILE)))"; \
 	else \
 		echo "Starting background log capture to $(LOG_DIR)/$$(date +%Y-%m-%d).log"; \
 		nohup docker compose logs -f >> $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
+		echo $$! > $(LOG_PID_FILE); \
 		echo "Log capture started (PID: $$!)"; \
 	fi
 
 logs-stop:
-	@if pgrep -f "docker compose logs -f" > /dev/null; then \
-		pkill -f "docker compose logs -f" && echo "Log capture stopped"; \
+	@if [ -f $(LOG_PID_FILE) ] && kill -0 $$(cat $(LOG_PID_FILE)) 2>/dev/null; then \
+		kill $$(cat $(LOG_PID_FILE)) && rm -f $(LOG_PID_FILE) && echo "Log capture stopped"; \
 	else \
+		rm -f $(LOG_PID_FILE); \
 		echo "No log capture process running"; \
 	fi
 
@@ -116,7 +119,7 @@ up: ensurenetworks logdirs
 	sleep 5
 	rm -f .env
 	@echo "Starting background log capture..."
-	@nohup docker compose logs -f >> $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 &
+	@nohup docker compose logs -f >> $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & echo $$! > $(LOG_PID_FILE)
 
 
 ensurenetworks:
