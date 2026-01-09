@@ -1,6 +1,7 @@
 
 DATE_SUFFIX=${shell date +"%Y%m%d%H%M%S"}
 DATAROOT=.
+LOG_DIR=./logs
 
 
 
@@ -10,6 +11,48 @@ encrypt:
 
 logs:
 	docker compose logs -f
+
+# Log Management - Capture and filter logs
+logdirs:
+	@mkdir -p $(LOG_DIR)
+
+logs-capture: logdirs
+	docker compose logs -f | tee $(LOG_DIR)/$$(date +%Y-%m-%d).log
+
+logs-capture-bg: logdirs
+	@echo "Capturing logs in background to $(LOG_DIR)/$$(date +%Y-%m-%d).log"
+	@docker compose logs -f >> $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 &
+
+capture-logs: logdirs
+	docker compose logs --since $(SINCE) >> $(LOG_DIR)/$$(date +%Y-%m-%d).log
+	@echo "Logs captured to $(LOG_DIR)/$$(date +%Y-%m-%d).log"
+
+logs-today:
+	@cat $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>/dev/null || echo "No logs captured today. Run 'make logs-capture' first."
+
+logs-errors:
+	@grep -i "error\|exception\|fail" $(LOG_DIR)/*.log 2>/dev/null || echo "No errors found in captured logs"
+
+logs-service:
+	@grep "^$(SERVICE)" $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>/dev/null || echo "No logs for $(SERVICE). Try: make logs-service SERVICE=req-router"
+
+logs-search:
+	@grep -i "$(PATTERN)" $(LOG_DIR)/*.log 2>/dev/null || echo "Pattern '$(PATTERN)' not found"
+
+logs-rotate:
+	@find $(LOG_DIR) -name "*.log" -mtime +3 -exec gzip {} \; 2>/dev/null || true
+	@find $(LOG_DIR) -name "*.log.gz" -mtime +7 -delete 2>/dev/null || true
+	@echo "Log rotation complete (compressed >3 days, deleted >7 days)"
+
+logs-status:
+	@echo "Log directory: $(LOG_DIR)"
+	@du -sh $(LOG_DIR) 2>/dev/null || echo "No logs yet"
+	@echo ""
+	@ls -lh $(LOG_DIR)/ 2>/dev/null || echo "No log files"
+
+logs-clean:
+	@read -p "Delete all captured logs? [y/N] " confirm && \
+	[ "$$confirm" = "y" ] && rm -rf $(LOG_DIR)/* && echo "Logs deleted" || echo "Cancelled"
 
 prepare:
 	@if [ -f .env.default ]; then \
@@ -128,6 +171,18 @@ help:
 	@echo "  make logs         - View application logs (follow mode)"
 	@echo "  make dblogs       - View database logs (follow mode)"
 	@echo "  make status       - Check installation status"
+	@echo ""
+	@echo "Log Management:"
+	@echo "  make logs-capture      - View logs AND save to file"
+	@echo "  make logs-capture-bg   - Save logs to file in background"
+	@echo "  make capture-logs SINCE=1h - Capture last N hours to file"
+	@echo "  make logs-today        - View today's captured logs"
+	@echo "  make logs-errors       - View errors from captured logs"
+	@echo "  make logs-service SERVICE=req-router - View specific service"
+	@echo "  make logs-search PATTERN='text' - Search logs for pattern"
+	@echo "  make logs-rotate       - Compress old, delete >7 days"
+	@echo "  make logs-status       - Show log disk usage"
+	@echo "  make logs-clean        - Delete all captured logs"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make pull         - Pull latest Docker images"
