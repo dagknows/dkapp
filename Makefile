@@ -54,6 +54,17 @@ logs-clean:
 	@read -p "Delete all captured logs? [y/N] " confirm && \
 	[ "$$confirm" = "y" ] && rm -rf $(LOG_DIR)/* && echo "Logs deleted" || echo "Cancelled"
 
+logs-cron-install:
+	@DKAPP_DIR=$$(pwd) && \
+	(crontab -l 2>/dev/null | grep -v "dkapp.*logs-rotate"; \
+	echo "0 0 * * * cd $$DKAPP_DIR && make logs-rotate >> $$DKAPP_DIR/logs/cron.log 2>&1") | crontab - && \
+	echo "Cron job installed: daily log rotation at midnight" && \
+	echo "View with: crontab -l"
+
+logs-cron-remove:
+	@crontab -l 2>/dev/null | grep -v "dkapp.*logs-rotate" | crontab - && \
+	echo "Cron job removed"
+
 prepare:
 	@if [ -f .env.default ]; then \
 		cp .env.default .env; \
@@ -183,6 +194,8 @@ help:
 	@echo "  make logs-rotate       - Compress old, delete >7 days"
 	@echo "  make logs-status       - Show log disk usage"
 	@echo "  make logs-clean        - Delete all captured logs"
+	@echo "  make logs-cron-install - Setup daily auto-rotation (cron)"
+	@echo "  make logs-cron-remove  - Remove auto-rotation cron job"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make pull         - Pull latest Docker images"
