@@ -16,19 +16,24 @@ logs:
 logdirs:
 	@mkdir -p $(LOG_DIR)
 
-logs-capture: logdirs
-	docker compose logs -f | tee -a $(LOG_DIR)/$$(date +%Y-%m-%d).log
+logs-start: logdirs
+	@if pgrep -f "docker compose logs -f" > /dev/null; then \
+		echo "Log capture already running"; \
+	else \
+		echo "Starting background log capture to $(LOG_DIR)/$$(date +%Y-%m-%d).log"; \
+		nohup docker compose logs -f >> $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
+		echo "Log capture started (PID: $$!)"; \
+	fi
 
-logs-capture-bg: logdirs
-	@echo "Capturing logs in background to $(LOG_DIR)/$$(date +%Y-%m-%d).log"
-	@docker compose logs -f >> $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 &
-
-capture-logs: logdirs
-	docker compose logs --since $(SINCE) >> $(LOG_DIR)/$$(date +%Y-%m-%d).log
-	@echo "Logs captured to $(LOG_DIR)/$$(date +%Y-%m-%d).log"
+logs-stop:
+	@if pgrep -f "docker compose logs -f" > /dev/null; then \
+		pkill -f "docker compose logs -f" && echo "Log capture stopped"; \
+	else \
+		echo "No log capture process running"; \
+	fi
 
 logs-today:
-	@cat $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>/dev/null || echo "No logs captured today. Run 'make logs-capture' first."
+	@cat $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>/dev/null || echo "No logs captured today. Run 'make logs-start' first."
 
 logs-errors:
 	@grep -i "error\|exception\|fail" $(LOG_DIR)/*.log 2>/dev/null || echo "No errors found in captured logs"
@@ -105,11 +110,13 @@ down:
 update: down pull build
 	echo "App updated.  Bring it up again with `make updb up logs`"
 
-up: ensurenetworks
+up: ensurenetworks logdirs
 	gpg -o .env -d .env.gpg
 	docker compose -f docker-compose.yml up -d
 	sleep 5
 	rm -f .env
+	@echo "Starting background log capture..."
+	@nohup docker compose logs -f >> $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 &
 
 
 ensurenetworks:
@@ -174,7 +181,7 @@ help:
 	@echo ""
 	@echo "Service Management:"
 	@echo "  make updb         - Start database services (postgres, elasticsearch)"
-	@echo "  make up           - Start application services"
+	@echo "  make up           - Start application services (+ auto log capture)"
 	@echo "  make down         - Stop all services"
 	@echo "  make restart      - Restart all services"
 	@echo ""
@@ -184,9 +191,8 @@ help:
 	@echo "  make status       - Check installation status"
 	@echo ""
 	@echo "Log Management:"
-	@echo "  make logs-capture      - View logs AND save to file"
-	@echo "  make logs-capture-bg   - Save logs to file in background"
-	@echo "  make capture-logs SINCE=1h - Capture last N hours to file"
+	@echo "  make logs-start        - Start background log capture"
+	@echo "  make logs-stop         - Stop background log capture"
 	@echo "  make logs-today        - View today's captured logs"
 	@echo "  make logs-errors       - View errors from captured logs"
 	@echo "  make logs-service SERVICE=req-router - View specific service"
