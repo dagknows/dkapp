@@ -33,7 +33,7 @@ All services are logged together chronologically, making it easy to trace issues
 
 | Command | Description |
 |---------|-------------|
-| `make logs` | View live logs (real-time stream) |
+| `make logs` | View live logs (last 300 lines + follow) |
 | `make logs-today` | View today's captured logs |
 | `make logs-errors` | Show only error/exception/fail lines |
 | `make logs-service SERVICE=req-router` | Filter to specific service |
