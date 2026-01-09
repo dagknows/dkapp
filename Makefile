@@ -10,7 +10,7 @@ encrypt:
 	rm -f .env
 
 logs:
-	docker compose logs -f
+	docker compose logs -f --tail 300
 
 # Log Management - Capture and filter logs
 logdirs:
