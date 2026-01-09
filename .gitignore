@@ -11,6 +11,7 @@ __pycache__/
 .env.default
 .backups/
 tls/
+logs/
 
 # C extensions
 *.so
