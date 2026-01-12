@@ -13,6 +13,8 @@ This guide explains how to manage Docker image versions in your DagKnows deploym
 
 **Bottom line:** Your existing workflow (`make pull && make down && make up`) still works exactly the same. You now have additional rollback and version tracking capabilities.
 
+**Backwards Compatibility:** Customers without `version-manifest.yaml` can continue using `make pull` and `make pull-latest` exactly as before - no changes required.
+
 ---
 
 ## Quick Reference
@@ -27,6 +29,81 @@ This guide explains how to manage Docker image versions in your DagKnows deploym
 | Rollback a service | `make rollback-service SERVICE=taskservice` |
 | Rollback all services | `make rollback` |
 | View all version commands | `make help-version` |
+
+---
+
+## Command Comparison: Pull vs Update
+
+### `make pull` vs `make pull-latest`
+
+| Command | Behavior | When to Use |
+|---------|----------|-------------|
+| `make pull` | **Smart pull** - respects version manifest | Normal updates when you want to use tracked versions |
+| `make pull-latest` | **Update to latest** - pulls `:latest`, updates manifest, resolves tags | When you want to update to newest images |
+
+**Details:**
+
+- **`make pull`**:
+  - If `version-manifest.yaml` exists → pulls the **specific versions** from manifest (e.g., `taskservice:1.42`, `req_router:1.35`)
+  - If no manifest → pulls `:latest` for all services (backwards compatible)
+  - **Use this** when you want to maintain version consistency
+
+- **`make pull-latest`**:
+  - Pulls `:latest` for all services
+  - If manifest exists: **updates manifest** and **resolves semantic tags** from ECR
+  - If no manifest: just pulls images (backwards compatible)
+  - **Use this** when you want to update to newest images
+
+### `make update` vs `make update-safe`
+
+| Command | What It Does | Safety Features |
+|---------|-------------|----------------|
+| `make update` | `down` → `pull` → `build` | ❌ No backup, no rollback |
+| `make update-safe` | Pulls latest → Resolves tags → Restarts → Health checks | ✅ Backup, rollback on failure |
+
+**Details:**
+
+- **`make update`**:
+  ```bash
+  make update
+  # Equivalent to:
+  make down
+  make pull      # Uses manifest versions if available
+  make build      # Rebuilds images from source
+  # Then you need to: make updb up logs
+  ```
+  - Stops services, pulls images, **rebuilds** images
+  - No automatic backup
+  - No health checks
+  - **Use this** for development when you're building from source
+
+- **`make update-safe`**:
+  ```bash
+  make update-safe
+  # Does:
+  # 1. Creates backup of manifest
+  # 2. Creates data backup
+  # 3. Pulls :latest for all services
+  # 4. Resolves tags from ECR (latest → 1.64, etc.)
+  # 5. Stops services
+  # 6. Starts services
+  # 7. Health checks
+  # 8. Auto-rollback if health check fails
+  ```
+  - Pulls pre-built images (no rebuild)
+  - Creates backups automatically
+  - Resolves semantic versions from ECR
+  - Runs health checks
+  - Auto-rollback on failure
+  - **Use this** for production updates
+
+### Quick Decision Guide
+
+**I want to...**
+- **Update to latest images (simple)** → `make pull-latest` (then `make down && make up`)
+- **Update to latest images (with backup/health check)** → `make update-safe`
+- **Rebuild from source** → `make update` (then `make updb up`)
+- **Pull specific versions from manifest** → `make pull` (then `make down && make up`)
 
 ---
 

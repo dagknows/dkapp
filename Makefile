@@ -152,17 +152,21 @@ pull:
 		docker pull public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest; \
 	fi
 
-# Pull latest images (ignores manifest)
+# Pull latest images (updates manifest if versioning is enabled)
 pull-latest:
-	docker pull public.ecr.aws/n5k3t9x2/wsfe:latest
-	docker pull public.ecr.aws/n5k3t9x2/ansi_processing:latest
-	docker pull public.ecr.aws/n5k3t9x2/jobsched:latest
-	docker pull public.ecr.aws/n5k3t9x2/apigateway:latest
-	docker pull public.ecr.aws/n5k3t9x2/conv_mgr:latest
-	docker pull public.ecr.aws/n5k3t9x2/settings:latest
-	docker pull public.ecr.aws/n5k3t9x2/taskservice:latest
-	docker pull public.ecr.aws/n5k3t9x2/req_router:latest
-	docker pull public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest
+	@if [ -f "version-manifest.yaml" ]; then \
+		python3 version-manager.py pull-latest; \
+	else \
+		docker pull public.ecr.aws/n5k3t9x2/wsfe:latest; \
+		docker pull public.ecr.aws/n5k3t9x2/ansi_processing:latest; \
+		docker pull public.ecr.aws/n5k3t9x2/jobsched:latest; \
+		docker pull public.ecr.aws/n5k3t9x2/apigateway:latest; \
+		docker pull public.ecr.aws/n5k3t9x2/conv_mgr:latest; \
+		docker pull public.ecr.aws/n5k3t9x2/settings:latest; \
+		docker pull public.ecr.aws/n5k3t9x2/taskservice:latest; \
+		docker pull public.ecr.aws/n5k3t9x2/req_router:latest; \
+		docker pull public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest; \
+	fi
 
 updb: dbdirs ensurenetworks
 	gpg -o .env -d .env.gpg

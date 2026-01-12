@@ -440,6 +440,60 @@ class VersionManager:
 
         print_success(f"\nPulled {success_count}/{len(SERVICES)} services")
 
+    def pull_latest(self):
+        """Pull :latest for all services and update manifest
+        
+        This is the recommended way to update all services to latest.
+        It pulls images, updates manifest, and resolves semantic versions from ECR.
+        """
+        print_header("Pulling Latest Images")
+
+        registry = self.get_registry()
+        pulled_services = []
+
+        # Step 1: Pull all :latest images
+        for svc in SERVICES:
+            image = f"{registry}/{svc}:latest"
+            print_info(f"Pulling {image}...")
+
+            success, _ = run_command(f"docker pull {image}")
+            if success:
+                pulled_services.append(svc)
+                print_success(f"Pulled {svc}:latest")
+            else:
+                print_error(f"Failed to pull {svc}:latest")
+
+        if not pulled_services:
+            print_error("No images were pulled")
+            return False
+
+        print_success(f"\nPulled {len(pulled_services)}/{len(SERVICES)} services")
+
+        # Step 2: Update manifest with 'latest' for all pulled services
+        print()
+        print_info("Updating manifest...")
+        for svc in pulled_services:
+            self.update_service_version(svc, 'latest')
+        self.save_manifest()
+        print_success("Manifest updated")
+
+        # Step 3: Try to resolve semantic versions from ECR
+        print()
+        if check_ecr_access():
+            resolved = self.resolve_latest_tags(pulled_services, save=True)
+            if resolved > 0:
+                print_success(f"Resolved {resolved} service(s) to semantic versions")
+            else:
+                print_warning("Could not resolve semantic versions - using 'latest' tags")
+                print_info("You can retry later with: make resolve-tags")
+        else:
+            print_warning("ECR not accessible - keeping 'latest' tags")
+            print_info("Configure AWS CLI for tag resolution, or run: make resolve-tags")
+
+        print()
+        print_info("Run 'make down && make up' to apply changes")
+        return True
+
     # ==================
     # ROLLBACK COMMANDS
     # ==================
@@ -947,6 +1001,9 @@ Examples:
     # Pull from manifest
     subparsers.add_parser('pull-from-manifest', help='Pull versions from manifest')
 
+    # Pull latest (ignores manifest, updates it after)
+    subparsers.add_parser('pull-latest', help='Pull :latest for all services and update manifest')
+
     # Rollback command
     rollback_parser = subparsers.add_parser('rollback', help='Rollback to previous version')
     rollback_parser.add_argument('--service', help='Service to rollback')
@@ -989,6 +1046,8 @@ Examples:
         vm.pull(args.service, args.tag)
     elif args.command == 'pull-from-manifest':
         vm.pull_from_manifest()
+    elif args.command == 'pull-latest':
+        vm.pull_latest()
     elif args.command == 'rollback':
         vm.rollback(args.service, args.tag, args.all)
     elif args.command == 'set':
