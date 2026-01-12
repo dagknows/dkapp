@@ -408,6 +408,7 @@ class VersionManager:
             print_success(f"Pulled {service}:{tag}")
             self.update_service_version(service, tag)
             self.save_manifest()
+            self.generate_env()
             print_info("Run 'make down && make up' to apply changes")
         else:
             print_error(f"Failed to pull {service}:{tag}")

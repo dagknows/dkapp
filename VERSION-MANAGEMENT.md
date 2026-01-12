@@ -311,6 +311,34 @@ req_router:
 
 ## Advanced: Single Service Updates
 
+### `make version-pull` vs `make rollback-service`
+
+| Command | What It Does | When to Use |
+|---------|-------------|-------------|
+| `make version-pull SERVICE=x TAG=y` | Pulls **any version** you specify, updates manifest & env | When you know the exact version you want |
+| `make rollback-service SERVICE=x` | Pulls the **previous version** from history, updates manifest & env | When you want to undo the last change |
+
+**Both commands:**
+- ✅ Pull the image
+- ✅ Update `version-manifest.yaml`
+- ✅ Update `versions.env`
+- ✅ Add entry to version history
+- ⚠️ Require `make down && make up` to apply
+
+**Example:**
+
+```bash
+# Pull a specific version (forward or backward)
+make version-pull SERVICE=taskservice TAG=1.42
+make down && make up
+
+# Rollback to previous version (automatic)
+make rollback-service SERVICE=taskservice
+make down && make up
+```
+
+### Pull Specific Version
+
 For hotfixes or testing specific versions of individual services:
 
 ```bash
