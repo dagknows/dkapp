@@ -2,6 +2,21 @@
 
 This guide explains how to manage Docker image versions in your DagKnows deployment.
 
+---
+
+## TL;DR - Just Tell Me How to Update
+
+**For customers who just want to update to the latest version:**
+
+```bash
+make pull-latest      # Pull newest images
+make down && make up  # Restart with new images
+```
+
+That's it! Everything else is optional.
+
+---
+
 ## What Changed?
 
 | Before | After | Notes |
@@ -266,7 +281,9 @@ Rollback uses the **version history** stored in the manifest. Each service track
 When you rollback, the system:
 1. Looks up the **previous tag** from history (e.g., `1.63` before `latest`)
 2. Pulls that specific version
-3. Updates the manifest
+3. **Automatically updates** `version-manifest.yaml` and `versions.env`
+
+You just need to restart: `make down && make up`
 
 **Note:** The manifest also stores image digests (SHA256), which uniquely identify each image even when the tag is `latest`.
 
@@ -293,6 +310,8 @@ make rollback
 make down
 make up
 ```
+
+**Note:** Rollback only affects services that have a **different** previous version. If a service's current and previous versions are the same, it won't appear in the rollback list. This is normal - it means that service wasn't changed.
 
 ### View Rollback History
 ```bash
@@ -488,6 +507,20 @@ aws ecr-public describe-images --repository-name req_router --region us-east-1 -
 | `version-manifest.yaml` | Version tracking database |
 | `versions.env` | Auto-generated env vars (DO NOT EDIT) |
 | `.version-backups/` | Automatic backups before changes |
+
+### Which Commands Auto-Update Files?
+
+| Command | Updates Manifest? | Updates versions.env? |
+|---------|-------------------|----------------------|
+| `make pull-latest` | ✅ Yes | ✅ Yes |
+| `make version-pull SERVICE=x TAG=y` | ✅ Yes | ✅ Yes |
+| `make rollback` | ✅ Yes | ✅ Yes |
+| `make rollback-service SERVICE=x` | ✅ Yes | ✅ Yes |
+| `make rollback-to SERVICE=x TAG=y` | ✅ Yes | ✅ Yes |
+| `make version-set SERVICE=x TAG=y` | ✅ Yes | ✅ Yes |
+| `make update-safe` | ✅ Yes | ✅ Yes |
+| `make pull` | ❌ No (uses existing) | ❌ No |
+| `make generate-env` | ❌ No | ✅ Yes (regenerates from manifest) |
 
 ---
 
