@@ -9,8 +9,16 @@ This guide explains how to manage Docker image versions in your DagKnows deploym
 **For customers who just want to update to the latest version:**
 
 ```bash
-make pull-latest      # Pull newest images
-make down && make up  # Restart with new images
+make pull-latest           # Pull newest images
+make down                  # Stop app containers
+make updb                  # Ensure databases are running
+make up                    # Start app containers
+```
+
+Or use the all-in-one restart:
+```bash
+make pull-latest           # Pull newest images
+make restart               # Does: down → updb → up
 ```
 
 That's it! Everything else is optional.
@@ -22,11 +30,11 @@ That's it! Everything else is optional.
 | Before | After | Notes |
 |--------|-------|-------|
 | `make pull` | `make pull` or `make pull-latest` | Still works! |
-| `make down && make up` | `make down && make up` | Same! |
+| `make restart` | `make restart` | Same! |
 | No rollback | `make rollback` | **New capability** |
 | No version history | `make version` | **New capability** |
 
-**Bottom line:** Your existing workflow (`make pull && make down && make up`) still works exactly the same. You now have additional rollback and version tracking capabilities.
+**Bottom line:** Your existing workflow (`make pull && make restart`) still works exactly the same. You now have additional rollback and version tracking capabilities.
 
 **Backwards Compatibility:** Customers without `version-manifest.yaml` can continue using `make pull` and `make pull-latest` exactly as before - no changes required.
 
@@ -36,10 +44,10 @@ That's it! Everything else is optional.
 
 | Action | Command |
 |--------|---------|
-| Start application | `make updb up` |
+| Start application | `make updb` then `make up` |
 | Stop application | `make down` |
 | **Pull latest images** | `make pull` or `make pull-latest` |
-| Restart with new images | `make down && make up` |
+| **Restart application** | `make restart` or `make down && make updb && make up` |
 | View current versions | `make version` |
 | Rollback a service | `make rollback-service SERVICE=taskservice` |
 | Rollback all services | `make rollback` |
@@ -115,10 +123,10 @@ That's it! Everything else is optional.
 ### Quick Decision Guide
 
 **I want to...**
-- **Update to latest images (simple)** → `make pull-latest` (then `make down && make up`)
+- **Update to latest images (simple)** → `make pull-latest` then `make restart`
 - **Update to latest images (with backup/health check)** → `make update-safe`
-- **Rebuild from source** → `make update` (then `make updb up`)
-- **Pull specific versions from manifest** → `make pull` (then `make down && make up`)
+- **Rebuild from source** → `make update` then `make updb && make up`
+- **Pull specific versions from manifest** → `make pull` then `make restart`
 
 ---
 
@@ -142,8 +150,8 @@ make down && make up
 
 ### To Force Pull Latest (Ignoring Manifest)
 ```bash
-make pull-latest   # Always pulls :latest, ignores manifest
-make down && make up
+make pull-latest   # Always pulls :latest
+make restart       # Restart application
 ```
 
 ### Automatic Tag Resolution
@@ -209,7 +217,7 @@ After migration, you'll have:
 
 ### Start Application
 ```bash
-# Start databases first (if not already running)
+# Start databases first
 make updb
 
 # Start application services
@@ -218,17 +226,22 @@ make up
 
 ### Stop Application
 ```bash
-# Stop application services only
 make down
-
-# This preserves databases - they keep running
+# This stops BOTH app and database containers
 ```
 
-### Full Restart
+### Restart Application
 ```bash
-make down
-make updb up
+# Option 1: Use the all-in-one restart command
+make restart
+
+# Option 2: Manual steps
+make down        # Stop everything
+make updb        # Start databases
+make up          # Start app
 ```
+
+**Important:** `make down` stops **all containers** including databases (postgres, elasticsearch). Always run `make updb` before `make up` after a `make down`.
 
 ### View Logs
 ```bash
@@ -283,7 +296,7 @@ When you rollback, the system:
 2. Pulls that specific version
 3. **Automatically updates** `version-manifest.yaml` and `versions.env`
 
-You just need to restart: `make down && make up`
+You just need to restart: `make restart`
 
 **Note:** The manifest also stores image digests (SHA256), which uniquely identify each image even when the tag is `latest`.
 
@@ -293,22 +306,19 @@ You just need to restart: `make down && make up`
 make rollback-service SERVICE=taskservice
 
 # Apply
-make down
-make up
+make restart
 ```
 
 ### Rollback to Specific Version
 ```bash
 make rollback-to SERVICE=taskservice TAG=1.41
-make down
-make up
+make restart
 ```
 
 ### Rollback All Services
 ```bash
 make rollback
-make down
-make up
+make restart
 ```
 
 **Note:** Rollback only affects services that have a **different** previous version. If a service's current and previous versions are the same, it won't appear in the rollback list. This is normal - it means that service wasn't changed.
@@ -342,18 +352,18 @@ req_router:
 - ✅ Update `version-manifest.yaml`
 - ✅ Update `versions.env`
 - ✅ Add entry to version history
-- ⚠️ Require `make down && make up` to apply
+- ⚠️ Require `make restart` to apply
 
 **Example:**
 
 ```bash
 # Pull a specific version (forward or backward)
 make version-pull SERVICE=taskservice TAG=1.42
-make down && make up
+make restart
 
 # Rollback to previous version (automatic)
 make rollback-service SERVICE=taskservice
-make down && make up
+make restart
 ```
 
 ### Pull Specific Version
@@ -365,8 +375,7 @@ For hotfixes or testing specific versions of individual services:
 make version-pull SERVICE=taskservice TAG=1.42
 
 # Apply
-make down
-make up
+make restart
 ```
 
 ### Custom Hotfix Versions
@@ -378,8 +387,7 @@ For customer-specific patches:
 make version-set SERVICE=req_router TAG=1.35-hotfix-customer123
 
 # Apply
-make down
-make up
+make restart
 ```
 
 Custom versions are tracked separately and shown with `[custom]` in status.
@@ -419,8 +427,7 @@ cat versions.env
 make generate-env
 
 # Try restarting
-make down
-make up
+make restart
 ```
 
 ### Manifest is corrupted
@@ -445,8 +452,7 @@ The application still works without `version-manifest.yaml`:
 rm version-manifest.yaml versions.env
 
 # Start normally - uses :latest for all
-make down
-make up
+make restart
 ```
 
 ---
@@ -556,8 +562,7 @@ make version
 make pull-latest
 
 # 3. Restart
-make down
-make up
+make restart
 
 # 4. Verify
 make status
@@ -579,13 +584,11 @@ make version-history
 
 # 2. Rollback all services
 make rollback
-make down
-make up
+make restart
 
 # Or rollback just one problematic service
 make rollback-service SERVICE=taskservice
-make down
-make up
+make restart
 ```
 
 ### Test a Specific Service Version
@@ -593,11 +596,9 @@ make up
 ```bash
 # Pull specific version
 make version-pull SERVICE=taskservice TAG=1.42
-make down
-make up
+make restart
 
 # If it works, keep it. If not, rollback:
 make rollback-service SERVICE=taskservice
-make down
-make up
+make restart
 ```

@@ -106,7 +106,7 @@ build: down
 dblogs:
 	docker compose -f db-docker-compose.yml logs -f --tail 100
 
-restart: down updb up logs
+restart: down updb up
 
 down:
 	docker compose -f docker-compose.yml down --remove-orphans
