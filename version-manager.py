@@ -150,6 +150,87 @@ def confirm(prompt: str, default: bool = False) -> bool:
 
 
 # ============================================
+# ECR TAG RESOLUTION
+# ============================================
+
+def check_ecr_access() -> bool:
+    """Check if AWS CLI can access ECR Public API"""
+    success, output = run_command(
+        "aws ecr-public describe-images --repository-name req_router "
+        "--region us-east-1 --max-results 1 --output json 2>&1",
+        timeout=15
+    )
+    return success
+
+
+def resolve_tag_from_ecr(service_name: str, image_digest: str = None) -> Optional[str]:
+    """
+    Query ECR Public to find the semantic version tag for a service.
+    
+    Args:
+        service_name: Name of the service (e.g., 'req_router')
+        image_digest: Optional digest to match (e.g., 'sha256:abc123...')
+        
+    Returns:
+        Semantic version tag (e.g., '1.35') or None if unable to resolve
+    """
+    # Query AWS ECR Public API for image details
+    success, output = run_command(
+        f"aws ecr-public describe-images --repository-name {service_name} "
+        f"--region us-east-1 --output json 2>&1",
+        timeout=30
+    )
+    
+    if not success:
+        return None
+    
+    try:
+        ecr_data = json.loads(output)
+        image_details = ecr_data.get('imageDetails', [])
+        
+        # If we have a digest, try to match it first
+        if image_digest:
+            # Clean up digest format (remove brackets and prefix)
+            clean_digest = image_digest.strip('[]').split('@')[-1] if '@' in image_digest else image_digest
+            
+            for image_detail in image_details:
+                ecr_digest = image_detail.get('imageDigest', '')
+                if clean_digest and ecr_digest and (ecr_digest == clean_digest or clean_digest in ecr_digest or ecr_digest in clean_digest):
+                    tags = image_detail.get('imageTags', [])
+                    semantic_tags = [t for t in tags if t != 'latest' and not t.startswith('sha')]
+                    if semantic_tags:
+                        # Sort to get highest version
+                        try:
+                            semantic_tags.sort(
+                                key=lambda x: [int(p) if p.isdigit() else p for p in x.replace('-', '.').split('.')],
+                                reverse=True
+                            )
+                        except (ValueError, AttributeError):
+                            pass
+                        return semantic_tags[0]
+        
+        # Fallback: Find the image tagged as 'latest' and get its semantic version
+        for image_detail in image_details:
+            tags = image_detail.get('imageTags', [])
+            if 'latest' in tags:
+                semantic_tags = [t for t in tags if t != 'latest' and not t.startswith('sha')]
+                if semantic_tags:
+                    try:
+                        semantic_tags.sort(
+                            key=lambda x: [int(p) if p.isdigit() else p for p in x.replace('-', '.').split('.')],
+                            reverse=True
+                        )
+                    except (ValueError, AttributeError):
+                        pass
+                    return semantic_tags[0]
+                    
+    except (json.JSONDecodeError, KeyError):
+        pass
+    
+    return None
+
+
+# ============================================
 # VERSION MANAGER CLASS
 # ============================================
 
@@ -526,25 +607,32 @@ class VersionManager:
 
         print_success("Images pulled successfully")
 
-        # Step 3: Stop services
+        # Step 3: Update manifest with pulled versions
+        print_info("Updating manifest...")
+        for svc in pulled_services:
+            self.update_service_version(svc, 'latest')
+        self.save_manifest()
+
+        # Step 4: Resolve 'latest' tags to semantic versions from ECR
+        print()
+        resolved = self.resolve_latest_tags(pulled_services, save=True)
+        if resolved == 0:
+            print_warning("Could not resolve semantic versions - using 'latest' tags")
+            print_info("You can retry later with: make resolve-tags")
+
+        # Step 5: Stop services
         print_info("Stopping services...")
         run_command("docker compose down")
         print_success("Services stopped")
 
-        # Step 4: Update manifest with 'latest' (actual versions resolved later)
-        for svc in pulled_services:
-            self.update_service_version(svc, 'latest')
-        self.save_manifest()
-        self.generate_env()
-
-        # Step 5: Start services
+        # Step 7: Start services
         print_info("Starting services with new images...")
         success, _ = run_command("make up", capture=False)
         if not success:
             print_error("Failed to start services")
             return False
 
-        # Step 6: Health check
+        # Step 8: Health check
         print_info("Waiting for services to initialize (30s)...")
         time.sleep(30)
 
@@ -616,6 +704,83 @@ class VersionManager:
             print(f"  {output}")
             print_info("Make sure AWS CLI is configured with valid credentials")
             return False
+
+    # ==================
+    # TAG RESOLUTION
+    # ==================
+
+    def resolve_latest_tags(self, services: List[str] = None, save: bool = True) -> int:
+        """
+        Resolve 'latest' tags to actual semantic versions by querying ECR.
+        
+        Args:
+            services: List of services to resolve (default: all with 'latest' tag)
+            save: Whether to save the manifest after resolution
+            
+        Returns:
+            Number of tags successfully resolved
+        """
+        print_header("Resolving Image Tags from ECR")
+        
+        # Check ECR access first
+        if not check_ecr_access():
+            print_error("Cannot access ECR Public API")
+            print_info("Make sure AWS CLI is configured with valid credentials:")
+            print_info("  aws configure")
+            print_info("")
+            print_info("Required IAM permissions: ecr-public:DescribeImages")
+            return 0
+        
+        print_success("ECR Public API accessible")
+        print()
+        
+        # Get services to resolve
+        if services is None:
+            services = SERVICES
+        
+        resolved_count = 0
+        
+        for svc in services:
+            current_tag = self.get_current_tag(svc)
+            
+            # Only resolve if current tag is 'latest'
+            if current_tag != 'latest':
+                print(f"  {svc}: {current_tag} (already versioned)")
+                continue
+            
+            # Get current digest for matching
+            svc_info = self.manifest.get('services', {}).get(svc, {})
+            digest = svc_info.get('image_digest', '')
+            
+            print_info(f"Resolving {svc}...")
+            resolved_tag = resolve_tag_from_ecr(svc, digest)
+            
+            if resolved_tag:
+                # Update manifest with resolved tag
+                self.manifest['services'][svc]['current_tag'] = resolved_tag
+                
+                # Also update history - replace 'latest' with resolved tag
+                history = self.manifest.get('history', {}).get(svc, [])
+                for entry in history:
+                    if entry.get('status') == 'current' and entry.get('tag') == 'latest':
+                        entry['tag'] = resolved_tag
+                        break
+                
+                print_success(f"  {svc}: latest → {resolved_tag}")
+                resolved_count += 1
+            else:
+                print_warning(f"  {svc}: Could not resolve (keeping 'latest')")
+        
+        if save and resolved_count > 0:
+            self.save_manifest()
+            self.generate_env()
+            print()
+            print_success(f"Resolved {resolved_count} service(s) to semantic versions")
+        elif resolved_count == 0:
+            print()
+            print_warning("No tags were resolved")
+        
+        return resolved_count
 
     # ==================
     # HELPER METHODS
@@ -793,6 +958,9 @@ Examples:
     set_parser.add_argument('--service', required=True, help='Service name')
     set_parser.add_argument('--tag', required=True, help='Version tag')
 
+    # Resolve tags command
+    subparsers.add_parser('resolve-tags', help='Resolve latest tags to semantic versions from ECR')
+
     # Update safe command
     subparsers.add_parser('update-safe', help='Safe update to latest with backup and rollback')
 
@@ -833,6 +1001,8 @@ Examples:
         vm.generate_env()
     elif args.command == 'ecr-login':
         vm.ecr_login()
+    elif args.command == 'resolve-tags':
+        vm.resolve_latest_tags()
     else:
         parser.print_help()
 

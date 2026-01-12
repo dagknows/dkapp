@@ -329,6 +329,10 @@ migrate-versions:
 generate-env:
 	@python3 version-manager.py generate-env
 
+# Resolve 'latest' tags to semantic versions from ECR
+resolve-tags:
+	@python3 version-manager.py resolve-tags
+
 # Friendly aliases
 upgrade: update-safe
 downgrade: rollback
@@ -364,6 +368,7 @@ help-version:
 	@echo "Migration & Setup:"
 	@echo "  make migrate-versions                - Migrate existing deployment to versioned"
 	@echo "  make generate-env                    - Regenerate versions.env from manifest"
+	@echo "  make resolve-tags                    - Resolve 'latest' tags to versions from ECR"
 	@echo "  make ecr-login                       - Login to private ECR (optional)"
 	@echo ""
 	@echo "Examples:"
