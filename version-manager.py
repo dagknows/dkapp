@@ -3,13 +3,15 @@
 DagKnows Version Manager
 Manages service versions, rollbacks, and deployments for dkapp on-prem installations.
 
+NOTE: Each service has its own version (e.g., req_router:1.35, taskservice:1.42)
+
 Usage:
     python3 version-manager.py show                          # Show current versions
     python3 version-manager.py history [SERVICE]             # Show version history
-    python3 version-manager.py pull --tag=TAG [--service=S]  # Pull specific version
+    python3 version-manager.py pull --service=S --tag=TAG    # Pull specific version for a service
     python3 version-manager.py rollback --service=S          # Rollback to previous
-    python3 version-manager.py set --service=S --tag=TAG     # Set custom version
-    python3 version-manager.py update-safe [--tag=TAG]       # Safe update with rollback
+    python3 version-manager.py set --service=S --tag=TAG     # Set custom version (hotfixes)
+    python3 version-manager.py update-safe                   # Safe update to latest with rollback
     python3 version-manager.py check-updates                 # Check for available updates
     python3 version-manager.py generate-env                  # Generate versions.env
     python3 version-manager.py pull-from-manifest            # Pull versions from manifest
@@ -304,33 +306,31 @@ class VersionManager:
     # PULL COMMANDS
     # ==================
 
-    def pull(self, tag: str, service: str = None):
-        """Pull specific version(s)"""
-        print_header(f"Pulling Version: {tag}")
+    def pull(self, service: str, tag: str):
+        """Pull specific version for a service
 
-        services_to_pull = [service] if service else SERVICES
+        Each service has its own version (e.g., req_router:1.35, taskservice:1.42)
+        """
+        if service not in SERVICES:
+            print_error(f"Unknown service: {service}")
+            print_info(f"Available services: {', '.join(SERVICES)}")
+            return
+
+        print_header(f"Pulling {service}:{tag}")
+
         registry = self.get_registry()
+        image = f"{registry}/{service}:{tag}"
+        print_info(f"Pulling {image}...")
 
-        success_count = 0
-        for svc in services_to_pull:
-            image = f"{registry}/{svc}:{tag}"
-            print_info(f"Pulling {image}...")
-
-            success, output = run_command(f"docker pull {image}")
-            if success:
-                print_success(f"Pulled {svc}:{tag}")
-                self.update_service_version(svc, tag)
-                success_count += 1
-            else:
-                print_error(f"Failed to pull {svc}:{tag}")
-                print(f"  {output}")
-
-        if success_count > 0:
+        success, output = run_command(f"docker pull {image}")
+        if success:
+            print_success(f"Pulled {service}:{tag}")
+            self.update_service_version(service, tag)
             self.save_manifest()
-            print_success(f"\nPulled {success_count}/{len(services_to_pull)} services")
-            print_info("Run 'make up' to apply changes")
+            print_info("Run 'make down && make up' to apply changes")
         else:
-            print_error("No images were pulled successfully")
+            print_error(f"Failed to pull {service}:{tag}")
+            print(f"  {output}")
 
     def pull_from_manifest(self):
         """Pull versions specified in manifest"""
@@ -479,11 +479,16 @@ class VersionManager:
         print_info("Run 'make up' to apply changes")
         return True
 
-    def update_safe(self, tag: str = None):
-        """Safe update with automatic backup and rollback on failure"""
+    def update_safe(self):
+        """Safe update to latest versions with automatic backup and rollback on failure
+
+        This pulls :latest for all services since each service has its own version.
+        For updating a specific service to a specific tag, use: make version-pull SERVICE=x TAG=y
+        """
         print_header("DagKnows Safe Update")
 
-        target_tag = tag or 'latest'
+        print_info("This will update all services to their latest versions")
+        print()
 
         # Step 1: Create backup
         print_info("Creating backup before update...")
@@ -499,13 +504,13 @@ class VersionManager:
         else:
             print_warning("Data backup skipped (may require manual backup)")
 
-        # Step 2: Pull new images
-        print_info(f"Pulling images ({target_tag})...")
+        # Step 2: Pull new images (latest for all services)
+        print_info("Pulling latest images...")
         registry = self.get_registry()
         pulled_services = []
 
         for svc in SERVICES:
-            image = f"{registry}/{svc}:{target_tag}"
+            image = f"{registry}/{svc}:latest"
             success, _ = run_command(f"docker pull {image}")
             if success:
                 pulled_services.append(svc)
@@ -526,9 +531,9 @@ class VersionManager:
         run_command("docker compose down")
         print_success("Services stopped")
 
-        # Step 4: Update manifest
+        # Step 4: Update manifest with 'latest' (actual versions resolved later)
         for svc in pulled_services:
-            self.update_service_version(svc, target_tag)
+            self.update_service_version(svc, 'latest')
         self.save_manifest()
         self.generate_env()
 
@@ -770,9 +775,9 @@ Examples:
     history_parser.add_argument('service', nargs='?', help='Service name (optional)')
 
     # Pull command
-    pull_parser = subparsers.add_parser('pull', help='Pull specific version')
-    pull_parser.add_argument('--tag', required=True, help='Tag to pull')
-    pull_parser.add_argument('--service', help='Specific service (optional)')
+    pull_parser = subparsers.add_parser('pull', help='Pull specific version for a service')
+    pull_parser.add_argument('--service', required=True, help='Service name (each service has its own version)')
+    pull_parser.add_argument('--tag', required=True, help='Tag to pull (e.g., 1.35)')
 
     # Pull from manifest
     subparsers.add_parser('pull-from-manifest', help='Pull versions from manifest')
@@ -789,8 +794,7 @@ Examples:
     set_parser.add_argument('--tag', required=True, help='Version tag')
 
     # Update safe command
-    update_parser = subparsers.add_parser('update-safe', help='Safe update with backup and rollback')
-    update_parser.add_argument('--tag', help='Target version (default: latest)')
+    subparsers.add_parser('update-safe', help='Safe update to latest with backup and rollback')
 
     # Check updates command
     subparsers.add_parser('check-updates', help='Check for available updates')
@@ -814,7 +818,7 @@ Examples:
     elif args.command == 'history':
         vm.history(getattr(args, 'service', None))
     elif args.command == 'pull':
-        vm.pull(args.tag, args.service)
+        vm.pull(args.service, args.tag)
     elif args.command == 'pull-from-manifest':
         vm.pull_from_manifest()
     elif args.command == 'rollback':
@@ -822,7 +826,7 @@ Examples:
     elif args.command == 'set':
         vm.set_version(args.service, args.tag)
     elif args.command == 'update-safe':
-        vm.update_safe(getattr(args, 'tag', None))
+        vm.update_safe()
     elif args.command == 'check-updates':
         vm.check_updates()
     elif args.command == 'generate-env':

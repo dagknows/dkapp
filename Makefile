@@ -261,14 +261,19 @@ version:
 version-history:
 	@python3 version-manager.py history $(SERVICE)
 
-# Pull specific version
-# Usage: make version-pull TAG=v1.2.3 [SERVICE=taskservice]
+# Pull specific version for a service
+# Usage: make version-pull SERVICE=taskservice TAG=1.42
 version-pull:
-	@if [ -z "$(TAG)" ]; then \
-		echo "Error: TAG is required. Usage: make version-pull TAG=v1.2.3"; \
+	@if [ -z "$(SERVICE)" ] || [ -z "$(TAG)" ]; then \
+		echo "Error: SERVICE and TAG are required."; \
+		echo "Usage: make version-pull SERVICE=taskservice TAG=1.42"; \
+		echo ""; \
+		echo "Each service has its own version. Examples:"; \
+		echo "  make version-pull SERVICE=req_router TAG=1.35"; \
+		echo "  make version-pull SERVICE=taskservice TAG=1.42"; \
 		exit 1; \
 	fi
-	@python3 version-manager.py pull --tag=$(TAG) $(if $(SERVICE),--service=$(SERVICE),)
+	@python3 version-manager.py pull --service=$(SERVICE) --tag=$(TAG)
 
 # Set custom version for hotfixes
 # Usage: make version-set SERVICE=taskservice TAG=v1.2.3-hotfix
@@ -303,9 +308,10 @@ rollback-to:
 	fi
 	@python3 version-manager.py rollback --service=$(SERVICE) --tag=$(TAG)
 
-# Safe update with automatic backup and rollback on failure
+# Safe update to latest with automatic backup and rollback on failure
+# For updating specific service to specific tag: make version-pull SERVICE=x TAG=y
 update-safe:
-	@python3 version-manager.py update-safe $(if $(TAG),--tag=$(TAG),)
+	@python3 version-manager.py update-safe
 
 # Check for available updates
 check-updates:
@@ -335,17 +341,19 @@ help-version:
 	@echo "DagKnows Version Management Commands"
 	@echo "====================================="
 	@echo ""
+	@echo "NOTE: Each service has its own version (e.g., req_router:1.35, taskservice:1.42)"
+	@echo ""
 	@echo "View Versions:"
 	@echo "  make version                         - Show current deployed versions"
 	@echo "  make version-history                 - Show version history for all services"
 	@echo "  make version-history SERVICE=x       - Show history for specific service"
 	@echo ""
 	@echo "Update:"
-	@echo "  make update-safe                     - Safe update with backup (recommended)"
-	@echo "  make update-safe TAG=v1.2.3          - Update to specific version"
-	@echo "  make version-pull TAG=v1.2.3         - Pull specific version for all services"
-	@echo "  make version-pull TAG=v1.2.3 SERVICE=x  - Pull for specific service"
-	@echo "  make version-set SERVICE=x TAG=y     - Set custom version (for hotfixes)"
+	@echo "  make pull                            - Pull latest for all services"
+	@echo "  make pull-latest                     - Pull latest (ignores manifest)"
+	@echo "  make update-safe                     - Safe update to latest with backup"
+	@echo "  make version-pull SERVICE=x TAG=y   - Pull specific version for one service"
+	@echo "  make version-set SERVICE=x TAG=y    - Set custom version (for hotfixes)"
 	@echo "  make check-updates                   - Check for available updates"
 	@echo ""
 	@echo "Rollback:"
@@ -353,10 +361,15 @@ help-version:
 	@echo "  make rollback-service SERVICE=x      - Rollback specific service"
 	@echo "  make rollback-to SERVICE=x TAG=y     - Rollback to specific version"
 	@echo ""
-	@echo "Migration & ECR:"
+	@echo "Migration & Setup:"
 	@echo "  make migrate-versions                - Migrate existing deployment to versioned"
-	@echo "  make ecr-login                       - Login to private ECR"
 	@echo "  make generate-env                    - Regenerate versions.env from manifest"
+	@echo "  make ecr-login                       - Login to private ECR (optional)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make version-pull SERVICE=taskservice TAG=1.42"
+	@echo "  make version-set SERVICE=req_router TAG=1.35-hotfix"
+	@echo "  make rollback-service SERVICE=settings"
 	@echo ""
 	@echo "Aliases:"
 	@echo "  make upgrade      = make update-safe"

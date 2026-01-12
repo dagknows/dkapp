@@ -157,6 +157,59 @@ def restore_backup(filepath: str, backup_path: str):
 # MIGRATION FUNCTIONS
 # ============================================
 
+def resolve_latest_tag_from_ecr(service_name: str, digest: str, registry: str = DEFAULT_REGISTRY) -> Optional[str]:
+    """
+    Query ECR to find semantic version tag for a digest when container uses :latest
+
+    Args:
+        service_name: Name of the service (e.g., 'req_router')
+        digest: Image digest (e.g., 'sha256:abc123...')
+        registry: ECR registry URL
+
+    Returns:
+        Semantic version tag (e.g., '1.35') or None if unable to resolve
+    """
+    # Extract registry and repository info
+    if 'public.ecr.aws' in registry:
+        # Public ECR - use docker manifest inspect
+        image_ref = f"{registry}/{service_name}@{digest}"
+        success, output = run_command(f"docker manifest inspect {image_ref}", timeout=15)
+
+        if not success:
+            print_warning(f"Unable to query ECR for {service_name} - will use 'latest'")
+            return None
+
+        # Query for all tags pointing to this digest using AWS CLI
+        # This requires aws CLI to be configured
+        repo_name = service_name
+        success, output = run_command(
+            f"aws ecr-public describe-images --repository-name {repo_name} "
+            f"--region us-east-1 --output json 2>/dev/null",
+            timeout=15
+        )
+
+        if not success:
+            # Fallback: try to get latest tags and match by digest
+            print_info(f"AWS CLI not available or not configured for {service_name}")
+            return None
+
+        try:
+            ecr_data = json.loads(output)
+            # Find images with matching digest
+            for image_detail in ecr_data.get('imageDetails', []):
+                if image_detail.get('imageDigest') == digest:
+                    # Get tags for this image, prefer semantic versions over 'latest'
+                    tags = image_detail.get('imageTags', [])
+                    semantic_tags = [t for t in tags if t != 'latest' and not t.startswith('sha')]
+                    if semantic_tags:
+                        # Return the first semantic version tag
+                        return semantic_tags[0]
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    return None
+
+
 def get_running_images() -> Dict:
     """Get currently running container images and their versions"""
     images = {}
@@ -197,6 +250,16 @@ def get_running_images() -> Dict:
                         parts = image.rsplit(':', 1)
                         image_name = parts[0]
                         tag = parts[1]
+
+                    # If tag is 'latest', try to resolve actual version from ECR
+                    if tag == 'latest' and digest:
+                        print_info(f"Detected 'latest' tag for {service_name}, querying ECR for actual version...")
+                        resolved_tag = resolve_latest_tag_from_ecr(service_name, digest, image_name)
+                        if resolved_tag:
+                            tag = resolved_tag
+                            print_success(f"Resolved {service_name}: latest → {tag}")
+                        else:
+                            print_warning(f"Could not resolve version for {service_name}, using 'latest'")
 
                     images[service_name] = {
                         'image': image_name,
@@ -335,6 +398,12 @@ def verify_config() -> bool:
 # MAIN MIGRATION WORKFLOW
 # ============================================
 
+def check_aws_cli() -> bool:
+    """Check if AWS CLI is available"""
+    success, _ = run_command("aws --version", timeout=5)
+    return success
+
+
 def migrate():
     """Main migration workflow"""
     print_header("DagKnows Version Migration Wizard")
@@ -342,6 +411,16 @@ def migrate():
     print("This wizard will enable version tracking for your DagKnows deployment.")
     print("It will create a version manifest based on your currently running containers.")
     print()
+
+    # Check for AWS CLI (optional)
+    if check_aws_cli():
+        print_success("AWS CLI detected - can resolve ':latest' tags to actual versions")
+    else:
+        print_warning("AWS CLI not found (optional)")
+        print_info("Without AWS CLI, containers using ':latest' will be tracked as 'latest'")
+        print_info("You can still manually set versions later with: make version-set SERVICE=x TAG=y")
+        print_info("To install: pip install awscli  OR  brew install awscli")
+        print()
 
     # Step 1: Confirm
     if not confirm("This will enable version tracking. Continue?"):
@@ -368,6 +447,18 @@ def migrate():
             return False
     else:
         show_current_state(images)
+
+        # Check if any services are using 'latest' and inform user
+        latest_services = [svc for svc, info in images.items() if info.get('tag') == 'latest']
+        if latest_services:
+            print()
+            print_info("Note: Some services are using 'latest' tag:")
+            for svc in latest_services:
+                print(f"  - {svc}")
+            print()
+            print_info("The migration attempted to resolve actual versions from ECR.")
+            print_info("If resolution failed, these will be tracked as 'latest' in the manifest.")
+            print_info("You can update to specific versions later using: make version-pull TAG=1.35")
 
     if not confirm("\nCreate manifest from detected images?"):
         print("Migration cancelled.")

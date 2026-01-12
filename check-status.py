@@ -268,6 +268,7 @@ def check_versions():
         print("  Detecting from running containers...")
         success, output = run_command("docker compose ps --format json")
         if success and output.strip():
+            has_latest = False
             try:
                 for line in output.strip().split('\n'):
                     if not line.strip():
@@ -285,7 +286,14 @@ def check_versions():
                             tag = 'latest'
                             if ':' in image:
                                 tag = image.rsplit(':', 1)[1]
+                            if tag == 'latest':
+                                has_latest = True
                             print(f"  {service:.<40} {tag}")
+
+                if has_latest:
+                    print()
+                    print(f"  {Colors.WARNING}Note: Images using ':latest' tag - actual version not shown{Colors.ENDC}")
+                    print(f"  {Colors.WARNING}Run 'make migrate-versions' to enable version tracking{Colors.ENDC}")
             except json.JSONDecodeError:
                 print(f"  {Colors.WARNING}Could not detect versions{Colors.ENDC}")
         return False
