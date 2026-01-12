@@ -15,7 +15,6 @@ Usage:
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -171,41 +170,73 @@ def resolve_latest_tag_from_ecr(service_name: str, digest: str, registry: str = 
     """
     # Extract registry and repository info
     if 'public.ecr.aws' in registry:
-        # Public ECR - use docker manifest inspect
-        image_ref = f"{registry}/{service_name}@{digest}"
-        success, output = run_command(f"docker manifest inspect {image_ref}", timeout=15)
-
-        if not success:
-            print_warning(f"Unable to query ECR for {service_name} - will use 'latest'")
+        # For public ECR, we need to query using AWS CLI
+        # The registry alias is the last part of the registry URL (e.g., 'n5k3t9x2' from 'public.ecr.aws/n5k3t9x2')
+        parts = registry.rstrip('/').split('/')
+        registry_alias = parts[-1] if len(parts) > 1 else None
+        
+        if not registry_alias:
+            print_warning(f"Could not parse registry alias from {registry}")
             return None
-
-        # Query for all tags pointing to this digest using AWS CLI
-        # This requires aws CLI to be configured
+        
+        # Query AWS ECR Public API for image details
+        # Note: This requires AWS CLI configured with valid credentials AND
+        # you must be the owner of the registry or have explicit permissions
         repo_name = service_name
+        
+        # Try the describe-images command for public ECR
         success, output = run_command(
             f"aws ecr-public describe-images --repository-name {repo_name} "
-            f"--region us-east-1 --output json 2>/dev/null",
-            timeout=15
+            f"--region us-east-1 --output json 2>&1",
+            timeout=30
         )
 
-        if not success:
-            # Fallback: try to get latest tags and match by digest
-            print_info(f"AWS CLI not available or not configured for {service_name}")
-            return None
-
-        try:
-            ecr_data = json.loads(output)
-            # Find images with matching digest
-            for image_detail in ecr_data.get('imageDetails', []):
-                if image_detail.get('imageDigest') == digest:
-                    # Get tags for this image, prefer semantic versions over 'latest'
+        if success:
+            try:
+                ecr_data = json.loads(output)
+                # Find images with matching digest
+                for image_detail in ecr_data.get('imageDetails', []):
+                    image_digest = image_detail.get('imageDigest', '')
+                    # Match digest - handle both full and short digest formats
+                    if digest and (image_digest == digest or digest.endswith(image_digest) or image_digest.endswith(digest.split(':')[-1] if ':' in digest else digest)):
+                        # Get tags for this image, prefer semantic versions over 'latest'
+                        tags = image_detail.get('imageTags', [])
+                        semantic_tags = [t for t in tags if t != 'latest' and not t.startswith('sha')]
+                        if semantic_tags:
+                            # Sort to get the most recent semantic version
+                            try:
+                                semantic_tags.sort(key=lambda x: [int(p) if p.isdigit() else p for p in x.replace('-', '.').split('.')], reverse=True)
+                            except (ValueError, AttributeError):
+                                pass
+                            return semantic_tags[0]
+                
+                # If we couldn't match by digest, try to find the image tagged as 'latest'
+                for image_detail in ecr_data.get('imageDetails', []):
                     tags = image_detail.get('imageTags', [])
-                    semantic_tags = [t for t in tags if t != 'latest' and not t.startswith('sha')]
-                    if semantic_tags:
-                        # Return the first semantic version tag
-                        return semantic_tags[0]
-        except (json.JSONDecodeError, KeyError):
-            pass
+                    if 'latest' in tags:
+                        semantic_tags = [t for t in tags if t != 'latest' and not t.startswith('sha')]
+                        if semantic_tags:
+                            try:
+                                semantic_tags.sort(key=lambda x: [int(p) if p.isdigit() else p for p in x.replace('-', '.').split('.')], reverse=True)
+                            except (ValueError, AttributeError):
+                                pass
+                            return semantic_tags[0]
+                            
+            except json.JSONDecodeError:
+                print_warning(f"Failed to parse ECR response for {repo_name}")
+            except KeyError:
+                pass
+        else:
+            # AWS CLI failed - show appropriate message
+            if "could not be found" in output.lower() or "repositorynotfound" in output.lower():
+                print_warning(f"Repository {repo_name} not found in your ECR account")
+            elif "accessdenied" in output.lower() or "not authorized" in output.lower():
+                print_warning(f"Not authorized to query ECR for {repo_name}")
+                print_info("  Note: You need to be the registry owner to query ECR Public API")
+            elif "unable to locate credentials" in output.lower():
+                print_warning("AWS credentials not configured")
+            else:
+                print_warning(f"Unable to query ECR for {repo_name} - will use 'latest'")
 
     return None
 
@@ -398,10 +429,55 @@ def verify_config() -> bool:
 # MAIN MIGRATION WORKFLOW
 # ============================================
 
-def check_aws_cli() -> bool:
-    """Check if AWS CLI is available"""
+def login_to_public_ecr() -> bool:
+    """
+    Login to public ECR registry for docker commands
+    
+    Returns:
+        True if login successful, False otherwise
+    """
+    success, output = run_command(
+        "aws ecr-public get-login-password --region us-east-1 2>/dev/null | "
+        "docker login --username AWS --password-stdin public.ecr.aws 2>&1",
+        timeout=30
+    )
+    return success and "Login Succeeded" in output
+
+
+def check_aws_cli() -> Tuple[bool, bool]:
+    """
+    Check if AWS CLI is available and can access ECR Public
+    
+    Returns:
+        Tuple of (aws_cli_available, ecr_public_accessible)
+    """
+    # Check if AWS CLI is installed
     success, _ = run_command("aws --version", timeout=5)
-    return success
+    if not success:
+        return False, False
+    
+    # Check if we can access ECR Public (test with a simple describe call)
+    # Try to describe one of our repositories
+    success, output = run_command(
+        "aws ecr-public describe-images --repository-name req_router "
+        "--region us-east-1 --max-results 1 --output json 2>&1",
+        timeout=15
+    )
+    
+    if success:
+        return True, True
+    
+    # Check specific error types
+    if "AccessDenied" in output or "not authorized" in output.lower():
+        return True, False  # CLI works but no permissions
+    if "Unable to locate credentials" in output:
+        return True, False  # CLI works but not configured
+    if "could not be found" in output.lower() or "RepositoryNotFoundException" in output:
+        # Repository not found might mean we don't own this registry
+        # but CLI is working - this is expected for public ECR we don't own
+        return True, False
+    
+    return True, False
 
 
 def migrate():
@@ -413,8 +489,30 @@ def migrate():
     print()
 
     # Check for AWS CLI (optional)
-    if check_aws_cli():
-        print_success("AWS CLI detected - can resolve ':latest' tags to actual versions")
+    aws_available, ecr_accessible = check_aws_cli()
+    
+    if aws_available and ecr_accessible:
+        print_success("AWS CLI detected with ECR Public access - can resolve ':latest' tags to actual versions")
+        # Try to login to public ECR for docker commands
+        print_info("Logging into public ECR...")
+        if login_to_public_ecr():
+            print_success("Logged into public.ecr.aws")
+        else:
+            print_warning("Could not login to public ECR (docker commands may still work)")
+    elif aws_available:
+        print_success("AWS CLI detected")
+        # Try to login to public ECR anyway - might work for pulling
+        print_info("Attempting to login to public ECR...")
+        if login_to_public_ecr():
+            print_success("Logged into public.ecr.aws")
+        else:
+            print_info("Could not login to public ECR (this is optional)")
+        print()
+        print_warning("Note: Cannot query ECR Public API to resolve ':latest' to specific versions")
+        print_info("This is normal if you don't own the DagKnows ECR registry.")
+        print_info("The migration will track versions as 'latest' - you can update later with:")
+        print_info("  make version-set SERVICE=taskservice TAG=1.42")
+        print()
     else:
         print_warning("AWS CLI not found (optional)")
         print_info("Without AWS CLI, containers using ':latest' will be tracked as 'latest'")
