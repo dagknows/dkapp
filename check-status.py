@@ -10,6 +10,12 @@ import subprocess
 import json
 from pathlib import Path
 
+try:
+    import yaml
+    YAML_AVAILABLE = True
+except ImportError:
+    YAML_AVAILABLE = False
+
 # ANSI color codes
 class Colors:
     HEADER = '\033[95m'
@@ -232,18 +238,97 @@ def check_ports():
 def check_data_directories():
     """Check if data directories exist and have correct permissions"""
     print_header("Data Directories Check")
-    
+
     dirs = ['postgres-data', 'esdata1', 'elastic_backup']
     all_ok = True
-    
+
     for dirname in dirs:
         exists = os.path.exists(dirname) and os.path.isdir(dirname)
         print_check(f"{dirname}", exists,
                    "Run: make dbdirs" if not exists else "")
         if not exists:
             all_ok = False
-    
+
     return all_ok
+
+
+def check_versions():
+    """Check and display installed component versions"""
+    print_header("Installed Versions")
+
+    manifest_file = 'version-manifest.yaml'
+
+    # Check if version tracking is enabled
+    if not os.path.exists(manifest_file):
+        print(f"  {Colors.WARNING}Version tracking not enabled{Colors.ENDC}")
+        print(f"  Run: make migrate-versions")
+        print()
+
+        # Try to detect versions from running containers
+        print("  Detecting from running containers...")
+        success, output = run_command("docker compose ps --format json")
+        if success and output.strip():
+            has_latest = False
+            try:
+                for line in output.strip().split('\n'):
+                    if not line.strip():
+                        continue
+                    container = json.loads(line)
+                    service = container.get('Service', '')
+                    container_id = container.get('ID', '')
+
+                    if container_id:
+                        # Get image from docker inspect
+                        img_success, img_output = run_command(f"docker inspect --format='{{{{.Config.Image}}}}' {container_id}")
+                        if img_success:
+                            image = img_output.strip()
+                            # Extract tag
+                            tag = 'latest'
+                            if ':' in image:
+                                tag = image.rsplit(':', 1)[1]
+                            if tag == 'latest':
+                                has_latest = True
+                            print(f"  {service:.<40} {tag}")
+
+                if has_latest:
+                    print()
+                    print(f"  {Colors.WARNING}Note: Images using ':latest' tag - actual version not shown{Colors.ENDC}")
+                    print(f"  {Colors.WARNING}Run 'make migrate-versions' to enable version tracking{Colors.ENDC}")
+            except json.JSONDecodeError:
+                print(f"  {Colors.WARNING}Could not detect versions{Colors.ENDC}")
+        return False
+
+    # Read manifest
+    if YAML_AVAILABLE:
+        try:
+            with open(manifest_file, 'r') as f:
+                manifest = yaml.safe_load(f)
+
+            services = manifest.get('services', {})
+            overrides = manifest.get('custom_overrides', {})
+
+            for name, info in services.items():
+                tag = info.get('current_tag', 'unknown')
+                deployed = info.get('deployed_at', '')[:10] if info.get('deployed_at') else ''
+
+                # Check for override
+                override = overrides.get(name, {})
+                if override.get('tag'):
+                    tag = override['tag']
+                    print(f"  {Colors.OKGREEN}\u2713{Colors.ENDC} {name:.<40} {tag:<15} {Colors.WARNING}[custom]{Colors.ENDC}")
+                else:
+                    print(f"  {Colors.OKGREEN}\u2713{Colors.ENDC} {name:.<40} {tag:<15} ({deployed})")
+
+            print()
+            return True
+        except Exception as e:
+            print(f"  {Colors.FAIL}Error reading manifest: {e}{Colors.ENDC}")
+            return False
+    else:
+        # Fallback: just check manifest exists
+        print(f"  {Colors.WARNING}YAML module not available - install with: pip install pyyaml{Colors.ENDC}")
+        print(f"  Run 'make version' for detailed version information")
+        return True
 
 def get_dagknows_url():
     """Try to get the DagKnows URL from config"""
@@ -316,6 +401,7 @@ def main():
         checks['db_containers'] = check_database_containers()
         checks['containers'] = check_containers()
         checks['ports'] = check_ports()
+        checks['versions'] = check_versions()
     
     # Print summary
     print_summary(checks)
