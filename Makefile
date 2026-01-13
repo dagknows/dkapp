@@ -108,7 +108,7 @@ dblogs:
 
 restart: down updb up
 
-down:
+down: logs-stop
 	docker compose -f docker-compose.yml down --remove-orphans
 
 update: down pull build
