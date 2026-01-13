@@ -150,26 +150,7 @@ def confirm(prompt: str, default: bool = False) -> bool:
 
 
 # ============================================
-# ECR LOGIN HELPERS
-# ============================================
-
-def login_to_public_ecr() -> bool:
-    """
-    Login to public ECR registry for docker commands
-    
-    Returns:
-        True if login successful, False otherwise
-    """
-    success, output = run_command(
-        "aws ecr-public get-login-password --region us-east-1 2>/dev/null | "
-        "docker login --username AWS --password-stdin public.ecr.aws 2>&1",
-        timeout=30
-    )
-    return success and "Login Succeeded" in output
-
-
-# ============================================
-# ECR TAG RESOLUTION
+# ECR TAG RESOLUTION (uses AWS CLI, not Docker login)
 # ============================================
 
 def check_ecr_access() -> bool:
@@ -418,11 +399,7 @@ class VersionManager:
 
         print_header(f"Pulling {service}:{tag}")
 
-        # Login to ECR if needed
         registry = self.get_registry()
-        if 'public.ecr.aws' in registry:
-            login_to_public_ecr()  # Silent - don't show errors if it fails
-
         image = f"{registry}/{service}:{tag}"
         print_info(f"Pulling {image}...")
 
@@ -447,15 +424,7 @@ class VersionManager:
             self.pull('latest')
             return
 
-        # Login to ECR if needed
         registry = self.get_registry()
-        if 'public.ecr.aws' in registry:
-            print_info("Logging into public ECR...")
-            if login_to_public_ecr():
-                print_success("Logged into public.ecr.aws")
-            else:
-                print_info("ECR login skipped (public ECR may not require authentication)")
-
         success_count = 0
 
         for name in SERVICES:
@@ -480,15 +449,7 @@ class VersionManager:
         """
         print_header("Pulling Latest Images")
 
-        # Step 0: Login to ECR if needed (for public ECR, this is optional but helps)
         registry = self.get_registry()
-        if 'public.ecr.aws' in registry:
-            print_info("Logging into public ECR...")
-            if login_to_public_ecr():
-                print_success("Logged into public.ecr.aws")
-            else:
-                print_info("ECR login skipped (public ECR may not require authentication)")
-
         pulled_services = []
 
         # Step 1: Pull all :latest images
@@ -580,15 +541,6 @@ class VersionManager:
 
         # Execute rollback
         registry = self.get_registry()
-        
-        # Login to ECR if needed
-        if 'public.ecr.aws' in registry:
-            print_info("Logging into public ECR...")
-            if login_to_public_ecr():
-                print_success("Logged into public.ecr.aws")
-            else:
-                print_info("ECR login skipped (public ECR may not require authentication)")
-        
         success_count = 0
 
         for svc, current, target in rollback_plan:
@@ -632,11 +584,6 @@ class VersionManager:
 
         # Pull the image first
         registry = self.get_registry()
-        
-        # Login to ECR if needed
-        if 'public.ecr.aws' in registry:
-            login_to_public_ecr()  # Silent - don't show errors if it fails
-        
         image = f"{registry}/{service}:{tag}"
         print_info(f"Pulling {image}...")
 
@@ -696,15 +643,6 @@ class VersionManager:
         # Step 2: Pull new images (latest for all services)
         print_info("Pulling latest images...")
         registry = self.get_registry()
-        
-        # Login to ECR if needed
-        if 'public.ecr.aws' in registry:
-            print_info("Logging into public ECR...")
-            if login_to_public_ecr():
-                print_success("Logged into public.ecr.aws")
-            else:
-                print_info("ECR login skipped (public ECR may not require authentication)")
-        
         pulled_services = []
 
         for svc in SERVICES:
