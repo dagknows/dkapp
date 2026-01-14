@@ -130,7 +130,11 @@ def run_command(cmd: str, capture: bool = True, timeout: int = 300) -> Tuple[boo
             result = subprocess.run(
                 cmd, shell=True, capture_output=True, text=True, timeout=timeout
             )
-            return result.returncode == 0, result.stdout.strip()
+            # Combine stdout and stderr for error messages
+            output = result.stdout.strip()
+            if result.stderr.strip():
+                output = f"{output}\n{result.stderr.strip()}" if output else result.stderr.strip()
+            return result.returncode == 0, output
         else:
             result = subprocess.run(cmd, shell=True, timeout=timeout)
             return result.returncode == 0, ""
@@ -150,7 +154,59 @@ def confirm(prompt: str, default: bool = False) -> bool:
 
 
 # ============================================
-# ECR TAG RESOLUTION
+# DOCKER HELPER FUNCTIONS
+# ============================================
+
+def clear_stale_ecr_credentials(registry: str) -> bool:
+    """
+    Clear stale Docker credentials for public ECR.
+    This is needed when Docker has cached an expired token.
+    
+    Returns:
+        True if logout was attempted, False otherwise
+    """
+    if 'public.ecr.aws' in registry:
+        print_info("Clearing stale Docker credentials for public.ecr.aws...")
+        run_command("docker logout public.ecr.aws 2>&1", capture=False)
+        return True
+    return False
+
+
+def docker_pull_with_retry(image: str, max_retries: int = 2) -> Tuple[bool, str]:
+    """
+    Pull a Docker image with automatic retry on expired token errors.
+    
+    Args:
+        image: Full image name (e.g., 'public.ecr.aws/n5k3t9x2/req_router:latest')
+        max_retries: Maximum number of retries
+        
+    Returns:
+        Tuple of (success, output)
+    """
+    for attempt in range(max_retries):
+        success, output = run_command(f"docker pull {image}")
+        
+        if success:
+            return True, output
+        
+        # Check if error is due to expired token
+        if "authorization token has expired" in output.lower() or "reauthenticate" in output.lower():
+            if attempt < max_retries - 1:
+                # Extract registry from image
+                if 'public.ecr.aws' in image:
+                    print_warning("Detected expired Docker token, clearing credentials...")
+                    clear_stale_ecr_credentials('public.ecr.aws')
+                    print_info("Retrying pull...")
+                    continue
+        
+        # For other errors or final attempt, return the error
+        return False, output
+    
+    return False, output
+
+
+# ============================================
+# ECR TAG RESOLUTION (uses AWS CLI, not Docker login)
 # ============================================
 
 def check_ecr_access() -> bool:
@@ -403,7 +459,7 @@ class VersionManager:
         image = f"{registry}/{service}:{tag}"
         print_info(f"Pulling {image}...")
 
-        success, output = run_command(f"docker pull {image}")
+        success, output = docker_pull_with_retry(image)
         if success:
             print_success(f"Pulled {service}:{tag}")
             self.update_service_version(service, tag)
@@ -432,12 +488,14 @@ class VersionManager:
             image = f"{registry}/{name}:{tag}"
             print_info(f"Pulling {image}...")
 
-            success, _ = run_command(f"docker pull {image}")
+            success, output = docker_pull_with_retry(image)
             if success:
                 print_success(f"Pulled {name}:{tag}")
                 success_count += 1
             else:
                 print_error(f"Failed to pull {name}:{tag}")
+                if output:
+                    print(f"  {output}")
 
         print_success(f"\nPulled {success_count}/{len(SERVICES)} services")
 
@@ -457,12 +515,14 @@ class VersionManager:
             image = f"{registry}/{svc}:latest"
             print_info(f"Pulling {image}...")
 
-            success, _ = run_command(f"docker pull {image}")
+            success, output = docker_pull_with_retry(image)
             if success:
                 pulled_services.append(svc)
                 print_success(f"Pulled {svc}:latest")
             else:
                 print_error(f"Failed to pull {svc}:latest")
+                if output:
+                    print(f"  {output}")
 
         if not pulled_services:
             print_error("No images were pulled")
@@ -548,10 +608,12 @@ class VersionManager:
 
             # Pull the target image
             image = f"{registry}/{svc}:{target}"
-            success, _ = run_command(f"docker pull {image}")
+            success, output = docker_pull_with_retry(image)
 
             if not success:
                 print_error(f"Failed to pull {svc}:{target}")
+                if output:
+                    print(f"  {output}")
                 continue
 
             # Update manifest
@@ -587,7 +649,7 @@ class VersionManager:
         image = f"{registry}/{service}:{tag}"
         print_info(f"Pulling {image}...")
 
-        success, output = run_command(f"docker pull {image}")
+        success, output = docker_pull_with_retry(image)
         if not success:
             print_error(f"Failed to pull image: {image}")
             print(f"  {output}")
@@ -647,12 +709,14 @@ class VersionManager:
 
         for svc in SERVICES:
             image = f"{registry}/{svc}:latest"
-            success, _ = run_command(f"docker pull {image}")
+            success, output = docker_pull_with_retry(image)
             if success:
                 pulled_services.append(svc)
                 print(f"  \u2713 {svc}")
             else:
                 print(f"  \u2717 {svc} (failed)")
+                if output:
+                    print(f"    {output}")
 
         if len(pulled_services) < len(SERVICES):
             print_warning(f"Only {len(pulled_services)}/{len(SERVICES)} images pulled")

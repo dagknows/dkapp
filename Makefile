@@ -108,7 +108,7 @@ dblogs:
 
 restart: down updb up
 
-down:
+down: logs-stop
 	docker compose -f docker-compose.yml down --remove-orphans
 
 update: down pull build
@@ -141,15 +141,15 @@ pull:
 	@if [ -f "version-manifest.yaml" ]; then \
 		python3 version-manager.py pull-from-manifest; \
 	else \
-		docker pull public.ecr.aws/n5k3t9x2/wsfe:latest; \
-		docker pull public.ecr.aws/n5k3t9x2/ansi_processing:latest; \
-		docker pull public.ecr.aws/n5k3t9x2/jobsched:latest; \
-		docker pull public.ecr.aws/n5k3t9x2/apigateway:latest; \
-		docker pull public.ecr.aws/n5k3t9x2/conv_mgr:latest; \
-		docker pull public.ecr.aws/n5k3t9x2/settings:latest; \
-		docker pull public.ecr.aws/n5k3t9x2/taskservice:latest; \
-		docker pull public.ecr.aws/n5k3t9x2/req_router:latest; \
-		docker pull public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/wsfe:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/ansi_processing:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/jobsched:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/apigateway:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/conv_mgr:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/settings:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/taskservice:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/req_router:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest; \
 	fi
 
 # Pull latest images (updates manifest if versioning is enabled)
@@ -157,15 +157,15 @@ pull-latest:
 	@if [ -f "version-manifest.yaml" ]; then \
 		python3 version-manager.py pull-latest; \
 	else \
-		docker pull public.ecr.aws/n5k3t9x2/wsfe:latest; \
-		docker pull public.ecr.aws/n5k3t9x2/ansi_processing:latest; \
-		docker pull public.ecr.aws/n5k3t9x2/jobsched:latest; \
-		docker pull public.ecr.aws/n5k3t9x2/apigateway:latest; \
-		docker pull public.ecr.aws/n5k3t9x2/conv_mgr:latest; \
-		docker pull public.ecr.aws/n5k3t9x2/settings:latest; \
-		docker pull public.ecr.aws/n5k3t9x2/taskservice:latest; \
-		docker pull public.ecr.aws/n5k3t9x2/req_router:latest; \
-		docker pull public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/wsfe:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/ansi_processing:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/jobsched:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/apigateway:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/conv_mgr:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/settings:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/taskservice:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/req_router:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest; \
 	fi
 
 updb: dbdirs ensurenetworks
