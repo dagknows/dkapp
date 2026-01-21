@@ -358,6 +358,7 @@ help:
 	@echo "  make dblogs-status      - Show DB log disk usage"
 	@echo "  make dblogs-clean       - Delete all captured DB logs"
 	@echo "  make dblogs-cron-install - Setup daily DB log rotation"
+	@echo "  make dblogs-cron-remove  - Remove DB log rotation cron job"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make pull         - Pull latest Docker images"
