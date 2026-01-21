@@ -248,14 +248,35 @@ updb: dbdirs ensurenetworks dblogdirs
 	docker compose -f db-docker-compose.yml down --remove-orphans
 	docker compose -f db-docker-compose.yml up -d
 	@echo "Waiting for databases to be healthy..."
+	@sleep 2
 	@echo "  Postgres: checking pg_isready..."
-	@timeout 60 sh -c 'until docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; do sleep 2; done' || \
-		(echo "ERROR: Postgres failed to become ready" && exit 1)
-	@echo "  Postgres: ready"
+	@i=0; while [ $$i -lt 30 ]; do \
+		if docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
+			echo "  Postgres: ready"; \
+			break; \
+		fi; \
+		sleep 2; \
+		i=$$((i + 1)); \
+	done; \
+	if [ $$i -ge 30 ]; then \
+		echo "ERROR: Postgres failed to become ready after 60s"; \
+		rm -f .env; \
+		exit 1; \
+	fi
 	@echo "  Elasticsearch: waiting for cluster status yellow..."
-	@timeout 120 sh -c 'until curl -sf "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null 2>&1; do sleep 3; done' || \
-		(echo "ERROR: Elasticsearch failed to become ready (possible OOM or startup failure)" && exit 1)
-	@echo "  Elasticsearch: ready"
+	@i=0; while [ $$i -lt 40 ]; do \
+		if curl -sf "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null 2>&1; then \
+			echo "  Elasticsearch: ready"; \
+			break; \
+		fi; \
+		sleep 3; \
+		i=$$((i + 1)); \
+	done; \
+	if [ $$i -ge 40 ]; then \
+		echo "ERROR: Elasticsearch failed to become ready after 120s (possible OOM or startup failure)"; \
+		rm -f .env; \
+		exit 1; \
+	fi
 	rm -f .env
 	@echo "Starting background database log capture..."
 	@$(MAKE) dblogs-start
