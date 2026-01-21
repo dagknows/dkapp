@@ -248,7 +248,7 @@ updb: dbdirs ensurenetworks dblogdirs
 	docker compose -f db-docker-compose.yml down --remove-orphans
 	docker compose -f db-docker-compose.yml up -d
 	@echo "Waiting for databases to be healthy..."
-	@sleep 2
+	@sleep 5
 	@echo "  Postgres: checking pg_isready..."
 	@i=0; while [ $$i -lt 30 ]; do \
 		if docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
