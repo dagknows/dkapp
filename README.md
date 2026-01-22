@@ -71,13 +71,15 @@ Once installation is complete, you can access DagKnows at the URL you configured
 
 **Useful Commands:**
 ```bash
-make logs        # View application logs
-make dblogs      # View database logs
-make down        # Stop all services
-make up          # Start application services (prompts for password)
-make updb        # Start database services (prompts for password)
-make restart     # Restart all services (prompts for password)
-make pull        # Pull latest Docker images from public ECR
+make logs          # View application logs
+make dblogs        # View database logs (live)
+make dblogs-errors # View database errors (OOM, killed, etc.)
+make down          # Stop all services (app + databases)
+make up            # Start application services (prompts for password)
+make updb          # Start databases (waits for healthy + auto DB log capture)
+make restart       # Restart all services (prompts for password)
+make pull          # Pull latest Docker images from public ECR
+make help          # Show all available commands
 ```
 
 **Note:** Commands that require access to the encrypted `.env` file will prompt for your encryption password (which should be the same as your Super User password if you followed the wizard's recommendation).
@@ -141,9 +143,7 @@ This will prompt for a password and encrypt your `.env` file. Remember this pass
 
 ```bash
 newgrp docker
-make updb dblogs
-# Press Ctrl+C after logs show services are healthy
-
+make updb      # Waits for databases to be healthy + auto-starts DB log capture
 make up logs
 ```
 

@@ -217,7 +217,7 @@ After migration, you'll have:
 
 ### Start Application
 ```bash
-# Start databases first
+# Start databases (waits for healthy + auto-starts DB log capture)
 make updb
 
 # Start application services
@@ -227,7 +227,7 @@ make up
 ### Stop Application
 ```bash
 make down
-# This stops BOTH app and database containers
+# This stops BOTH app and database containers + log captures
 ```
 
 ### Restart Application
@@ -245,11 +245,17 @@ make up          # Start app
 
 ### View Logs
 ```bash
-# Follow all logs
+# Follow application logs
 make logs
 
-# View today's captured logs
+# View today's captured app logs
 make logs-today
+
+# View database errors (OOM, killed, etc.)
+make dblogs-errors
+
+# View today's captured DB logs
+make dblogs-today
 ```
 
 ---

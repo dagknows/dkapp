@@ -17,6 +17,35 @@ make logs-today  # View today's logs
 make logs-errors # View errors only
 ```
 
+## Database Logs
+
+Database logs (postgres, elasticsearch) are captured separately from application logs.
+
+```bash
+# Start database services (auto-starts DB log capture + waits for healthy)
+make updb
+
+# View database errors (includes OOM detection)
+make dblogs-errors
+
+# Check today's DB logs
+make dblogs-today
+```
+
+### Database Log Commands
+
+| Command | Description |
+|---------|-------------|
+| `make dblogs` | View live DB logs (follow mode) |
+| `make dblogs-today` | View today's captured DB logs |
+| `make dblogs-errors` | Show errors including OOM/killed |
+| `make dblogs-service SERVICE=elasticsearch` | Filter to specific DB |
+| `make dblogs-search PATTERN='text'` | Search DB logs |
+| `make dblogs-start` | Manually start DB log capture |
+| `make dblogs-stop` | Stop DB log capture |
+| `make dblogs-status` | Show DB log disk usage |
+| `make dblogs-rotate` | Rotate DB logs |
+
 ## How It Works
 
 When you run `make up`, two things happen:
@@ -82,14 +111,17 @@ req-router-1    | 2026-01-09 14:30:01 ERROR Upstream service error
 ### Standard Startup
 
 ```bash
-# 1. Start databases (wait for healthy)
+# 1. Start databases (waits for healthy + auto-starts DB log capture)
 make updb
-make dblogs      # Watch until healthy, then Ctrl+C
+# No need to watch dblogs anymore - updb waits for health!
 
-# 2. Start application (auto-starts log capture)
+# 2. Start application (auto-starts app log capture)
 make up
 
-# 3. View live logs if needed
+# 3. Check for any DB errors if needed
+make dblogs-errors
+
+# 4. View live logs if needed
 make logs        # Ctrl+C to exit (capture continues in background)
 ```
 

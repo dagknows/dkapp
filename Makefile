@@ -3,8 +3,11 @@ DATE_SUFFIX=${shell date +"%Y%m%d%H%M%S"}
 DATAROOT=.
 LOG_DIR=./logs
 LOG_PID_FILE=./logs/.capture.pid
+DBLOG_DIR=./dblogs
+DBLOG_PID_FILE=./dblogs/.capture.pid
 
 .PHONY: logs logs-start logs-stop logs-today logs-errors logs-service logs-search logs-rotate logs-status logs-clean logs-cron-install logs-cron-remove logdirs
+.PHONY: dblogs dblogs-start dblogs-stop dblogs-today dblogs-errors dblogs-service dblogs-search dblogs-rotate dblogs-status dblogs-clean dblogs-cron-install dblogs-cron-remove dblogdirs
 .PHONY: version version-history version-pull version-set rollback rollback-service rollback-to update-safe check-updates ecr-login migrate-versions
 
 encrypt:
@@ -74,6 +77,77 @@ logs-cron-remove:
 	@crontab -l 2>/dev/null | grep -v "dkapp.*logs-rotate" | crontab - && \
 	echo "Cron job removed"
 
+# ==============================================
+# DATABASE LOG MANAGEMENT
+# ==============================================
+
+dblogdirs:
+	@mkdir -p $(DBLOG_DIR)
+
+dblogs-start: dblogdirs
+	@if [ -f $(DBLOG_PID_FILE) ] && kill -0 $$(cat $(DBLOG_PID_FILE)) 2>/dev/null; then \
+		echo "DB log capture already running (PID: $$(cat $(DBLOG_PID_FILE)))"; \
+	else \
+		echo "Starting background DB log capture to $(DBLOG_DIR)/$$(date +%Y-%m-%d).log"; \
+		nohup docker compose -f db-docker-compose.yml logs -f >> $(DBLOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
+		echo $$! > $(DBLOG_PID_FILE); \
+		echo "DB log capture started (PID: $$!)"; \
+	fi
+
+dblogs-stop:
+	@if [ -f $(DBLOG_PID_FILE) ] && kill -0 $$(cat $(DBLOG_PID_FILE)) 2>/dev/null; then \
+		kill $$(cat $(DBLOG_PID_FILE)) && rm -f $(DBLOG_PID_FILE) && echo "DB log capture stopped"; \
+	else \
+		rm -f $(DBLOG_PID_FILE); \
+		echo "No DB log capture process running"; \
+	fi
+
+dblogs-today:
+	@cat $(DBLOG_DIR)/$$(date +%Y-%m-%d).log 2>/dev/null || echo "No DB logs captured today. Run 'make dblogs-start' first."
+
+dblogs-errors:
+	@grep -i "error\|exception\|fail\|oom\|killed\|exit" $(DBLOG_DIR)/*.log 2>/dev/null || echo "No errors found in captured DB logs"
+
+dblogs-service:
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "Usage: make dblogs-service SERVICE=postgres|elasticsearch"; \
+	else \
+		grep "^$(SERVICE)" $(DBLOG_DIR)/$$(date +%Y-%m-%d).log 2>/dev/null || echo "No logs for $(SERVICE)."; \
+	fi
+
+dblogs-search:
+	@if [ -z "$(PATTERN)" ]; then \
+		echo "Usage: make dblogs-search PATTERN='text'"; \
+	else \
+		grep -i "$(PATTERN)" $(DBLOG_DIR)/*.log 2>/dev/null || echo "Pattern '$(PATTERN)' not found in DB logs"; \
+	fi
+
+dblogs-rotate:
+	@find $(DBLOG_DIR) -name "*.log" -mtime +3 -exec gzip {} \; 2>/dev/null || true
+	@find $(DBLOG_DIR) -name "*.log.gz" -mtime +7 -delete 2>/dev/null || true
+	@echo "DB log rotation complete (compressed >3 days, deleted >7 days)"
+
+dblogs-status:
+	@echo "DB Log directory: $(DBLOG_DIR)"
+	@du -sh $(DBLOG_DIR) 2>/dev/null || echo "No DB logs yet"
+	@echo ""
+	@ls -lh $(DBLOG_DIR)/ 2>/dev/null || echo "No DB log files"
+
+dblogs-clean:
+	@read -p "Delete all captured DB logs? [y/N] " confirm && \
+	[ "$$confirm" = "y" ] && rm -rf $(DBLOG_DIR)/* && echo "DB logs deleted" || echo "Cancelled"
+
+dblogs-cron-install:
+	@DKAPP_DIR=$$(pwd) && \
+	(crontab -l 2>/dev/null | grep -v "dkapp.*dblogs-rotate"; \
+	echo "0 0 * * * cd $$DKAPP_DIR && make dblogs-rotate >> $$DKAPP_DIR/dblogs/cron.log 2>&1") | crontab - && \
+	echo "DB log cron job installed: daily rotation at midnight" && \
+	echo "View with: crontab -l"
+
+dblogs-cron-remove:
+	@crontab -l 2>/dev/null | grep -v "dkapp.*dblogs-rotate" | crontab - && \
+	echo "DB log cron job removed"
+
 prepare:
 	@if [ -f .env.default ]; then \
 		cp .env.default .env; \
@@ -108,8 +182,9 @@ dblogs:
 
 restart: down updb up
 
-down: logs-stop
+down: logs-stop dblogs-stop
 	docker compose -f docker-compose.yml down --remove-orphans
+	docker compose -f db-docker-compose.yml down --remove-orphans
 
 update: down pull build
 	echo "App updated.  Bring it up again with `make updb up logs`"
@@ -168,12 +243,44 @@ pull-latest:
 		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest; \
 	fi
 
-updb: dbdirs ensurenetworks
+updb: dbdirs ensurenetworks dblogdirs
 	gpg -o .env -d .env.gpg
 	docker compose -f db-docker-compose.yml down --remove-orphans
 	docker compose -f db-docker-compose.yml up -d
-	sleep 5
+	@echo "Waiting for databases to be healthy..."
+	@sleep 5
+	@echo "  Postgres: checking pg_isready..."
+	@i=0; while [ $$i -lt 30 ]; do \
+		if docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
+			echo "  Postgres: ready"; \
+			break; \
+		fi; \
+		sleep 2; \
+		i=$$((i + 1)); \
+	done; \
+	if [ $$i -ge 30 ]; then \
+		echo "ERROR: Postgres failed to become ready after 60s"; \
+		rm -f .env; \
+		exit 1; \
+	fi
+	@echo "  Elasticsearch: waiting for cluster status yellow..."
+	@i=0; while [ $$i -lt 40 ]; do \
+		if curl -sf "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null 2>&1; then \
+			echo "  Elasticsearch: ready"; \
+			break; \
+		fi; \
+		sleep 3; \
+		i=$$((i + 1)); \
+	done; \
+	if [ $$i -ge 40 ]; then \
+		echo "ERROR: Elasticsearch failed to become ready after 120s (possible OOM or startup failure)"; \
+		rm -f .env; \
+		exit 1; \
+	fi
 	rm -f .env
+	@echo "Starting background database log capture..."
+	@$(MAKE) dblogs-start
+	@echo "Database services are healthy and running."
 
 dbdirs:
 	mkdir -p postgres-data esdata1 elastic_backup
@@ -215,14 +322,16 @@ help:
 	@echo "  make reconfigure  - Update configuration without reinstalling"
 	@echo ""
 	@echo "Service Management:"
-	@echo "  make updb         - Start database services (postgres, elasticsearch)"
+	@echo "  make updb         - Start databases (waits for healthy + auto DB log capture)"
 	@echo "  make up           - Start application services (+ auto log capture)"
-	@echo "  make down         - Stop all services"
+	@echo "  make down         - Stop all services (app + databases + log captures)"
 	@echo "  make restart      - Restart all services"
 	@echo ""
 	@echo "Monitoring:"
 	@echo "  make logs         - View application logs (follow mode)"
 	@echo "  make dblogs       - View database logs (follow mode)"
+	@echo "  make dblogs-today - View today's captured DB logs"
+	@echo "  make dblogs-errors- View DB errors (includes OOM detection)"
 	@echo "  make status       - Check installation status"
 	@echo ""
 	@echo "Log Management:"
@@ -237,6 +346,19 @@ help:
 	@echo "  make logs-clean        - Delete all captured logs"
 	@echo "  make logs-cron-install - Setup daily auto-rotation (cron)"
 	@echo "  make logs-cron-remove  - Remove auto-rotation cron job"
+	@echo ""
+	@echo "Database Log Management:"
+	@echo "  make dblogs-start       - Start background DB log capture"
+	@echo "  make dblogs-stop        - Stop background DB log capture"
+	@echo "  make dblogs-today       - View today's captured DB logs"
+	@echo "  make dblogs-errors      - View DB errors (OOM, killed, etc.)"
+	@echo "  make dblogs-service SERVICE=postgres - View specific DB service"
+	@echo "  make dblogs-search PATTERN='text' - Search DB logs"
+	@echo "  make dblogs-rotate      - Compress old, delete >7 days"
+	@echo "  make dblogs-status      - Show DB log disk usage"
+	@echo "  make dblogs-clean       - Delete all captured DB logs"
+	@echo "  make dblogs-cron-install - Setup daily DB log rotation"
+	@echo "  make dblogs-cron-remove  - Remove DB log rotation cron job"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make pull         - Pull latest Docker images"

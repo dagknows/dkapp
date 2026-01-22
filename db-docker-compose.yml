@@ -1,4 +1,3 @@
-version: '3'
 networks:
   saaslocalnetwork:
     external: true
@@ -20,6 +19,8 @@ services:
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.9.2
+    ports:
+      - "9200:9200"
     volumes:
       - ./esdata1:/usr/share/elasticsearch/data
       - ./elastic_backup:/opt/elasticsearch/backup
@@ -38,3 +39,9 @@ services:
       memlock:
         soft: -1
         hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=10s' || exit 1"]
+      interval: 10s
+      timeout: 15s
+      retries: 12
+      start_period: 30s
