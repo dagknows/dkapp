@@ -91,14 +91,19 @@ case $choice in
         read -s passphrase
         echo ""
 
-        # Verify passphrase works (use --passphrase-fd to avoid exposing in process list)
-        # Note: --pinentry-mode loopback is required for GPG 2.x when reading passphrase from stdin
+        # Verify passphrase works using temporary passphrase file
+        # Note: GPG 2.x with symmetric encryption works best with --passphrase-file
         echo "Verifying passphrase..."
         test_file=$(mktemp)
-        chmod 600 "$test_file"
-        trap "rm -f $test_file" EXIT
-        if echo "$passphrase" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 -o "$test_file" -d "$SCRIPT_DIR/.env.gpg" 2>/dev/null; then
-            rm -f "$test_file"
+        temp_passfile=$(mktemp)
+        chmod 600 "$test_file" "$temp_passfile"
+        trap "rm -f $test_file $temp_passfile" EXIT
+
+        # Write passphrase to temp file for GPG
+        echo "$passphrase" > "$temp_passfile"
+
+        if gpg --batch --yes --passphrase-file "$temp_passfile" -o "$test_file" -d "$SCRIPT_DIR/.env.gpg" 2>/dev/null; then
+            rm -f "$test_file" "$temp_passfile"
             print_success "Passphrase verified successfully"
 
             # Store passphrase securely
@@ -107,7 +112,7 @@ case $choice in
             chown root:root "$PASSPHRASE_FILE"
             print_success "Passphrase stored in $PASSPHRASE_FILE (root-only access)"
         else
-            rm -f "$test_file"
+            rm -f "$test_file" "$temp_passfile"
             print_error "Passphrase verification failed. Please check your passphrase."
             exit 1
         fi
@@ -119,13 +124,19 @@ case $choice in
         read -s passphrase
         echo ""
 
-        # Use --passphrase-fd to avoid exposing passphrase in process list
-        # Note: --pinentry-mode loopback is required for GPG 2.x when reading passphrase from stdin
-        if echo "$passphrase" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 -o "$SCRIPT_DIR/.env" -d "$SCRIPT_DIR/.env.gpg" 2>/dev/null; then
+        # Use temporary passphrase file for GPG 2.x compatibility
+        temp_passfile=$(mktemp)
+        chmod 600 "$temp_passfile"
+        trap "rm -f $temp_passfile" EXIT
+        echo "$passphrase" > "$temp_passfile"
+
+        if gpg --batch --yes --passphrase-file "$temp_passfile" -o "$SCRIPT_DIR/.env" -d "$SCRIPT_DIR/.env.gpg" 2>/dev/null; then
+            rm -f "$temp_passfile"
             chmod 600 "$SCRIPT_DIR/.env"
             print_success ".env file decrypted"
             print_warning "WARNING: .env file is now unencrypted. Ensure proper file permissions."
         else
+            rm -f "$temp_passfile"
             print_error "Decryption failed. Please check your passphrase."
             exit 1
         fi
