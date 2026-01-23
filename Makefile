@@ -9,6 +9,7 @@ DBLOG_PID_FILE=./dblogs/.capture.pid
 .PHONY: logs logs-start logs-stop logs-today logs-errors logs-service logs-search logs-rotate logs-status logs-clean logs-cron-install logs-cron-remove logdirs
 .PHONY: dblogs dblogs-start dblogs-stop dblogs-today dblogs-errors dblogs-service dblogs-search dblogs-rotate dblogs-status dblogs-clean dblogs-cron-install dblogs-cron-remove dblogdirs
 .PHONY: version version-history version-pull version-set rollback rollback-service rollback-to update-safe check-updates ecr-login migrate-versions
+.PHONY: setup-autorestart disable-autorestart autorestart-status
 
 encrypt:
 	gpg -c .env
@@ -373,6 +374,11 @@ help:
 	@echo "  make rollback      - Rollback to previous versions"
 	@echo "  make help-version  - Show all version management commands"
 	@echo ""
+	@echo "Auto-Restart (System Boot):"
+	@echo "  make setup-autorestart   - Setup auto-start on system reboot"
+	@echo "  make disable-autorestart - Disable auto-start and remove services"
+	@echo "  make autorestart-status  - Check auto-restart configuration"
+	@echo ""
 	@echo "Note: Commands that access encrypted files will prompt for password"
 
 # ============================================
@@ -508,3 +514,52 @@ help-version:
 	@echo "  make whatversion  = make version"
 	@echo "  make info         = make status version"
 	@echo "  make health       = make status check-updates"
+
+# ==============================================
+# AUTO-RESTART MANAGEMENT
+# ==============================================
+
+# Setup automatic restart on system boot
+setup-autorestart:
+	@echo "Setting up automatic restart on system boot..."
+	@sudo bash ./setup-autorestart.sh
+
+# Disable automatic restart
+disable-autorestart:
+	@echo "Disabling automatic restart..."
+	@sudo systemctl disable dkapp-db.service dkapp.service 2>/dev/null || true
+	@sudo systemctl stop dkapp-db.service dkapp.service 2>/dev/null || true
+	@sudo rm -f /etc/systemd/system/dkapp-db.service /etc/systemd/system/dkapp.service
+	@sudo rm -f /root/.dkapp-passphrase
+	@sudo systemctl daemon-reload
+	@echo "Auto-restart disabled. Services removed."
+
+# Check auto-restart status
+autorestart-status:
+	@echo "=== Auto-Restart Status ==="
+	@echo ""
+	@echo "Docker service:"
+	@systemctl is-enabled docker 2>/dev/null && echo "  Enabled" || echo "  Disabled"
+	@echo ""
+	@echo "DagKnows Database Service (dkapp-db):"
+	@if [ -f /etc/systemd/system/dkapp-db.service ]; then \
+		systemctl is-enabled dkapp-db.service 2>/dev/null && echo "  Enabled" || echo "  Disabled"; \
+		echo "  Status: $$(systemctl is-active dkapp-db.service 2>/dev/null || echo 'not running')"; \
+	else \
+		echo "  Not installed"; \
+	fi
+	@echo ""
+	@echo "DagKnows Application Service (dkapp):"
+	@if [ -f /etc/systemd/system/dkapp.service ]; then \
+		systemctl is-enabled dkapp.service 2>/dev/null && echo "  Enabled" || echo "  Disabled"; \
+		echo "  Status: $$(systemctl is-active dkapp.service 2>/dev/null || echo 'not running')"; \
+	else \
+		echo "  Not installed"; \
+	fi
+	@echo ""
+	@echo "Passphrase file:"
+	@if [ -f /root/.dkapp-passphrase ]; then \
+		echo "  Present (auto-decrypt enabled)"; \
+	else \
+		echo "  Not present (manual password entry required)"; \
+	fi

@@ -1,0 +1,21 @@
+[Unit]
+Description=DagKnows Database Services (PostgreSQL + Elasticsearch)
+Requires=docker.service
+After=docker.service network-online.target time-sync.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/dkapp
+Environment=DKAPP_DIR=/opt/dkapp
+Environment=PASSPHRASE_FILE=/root/.dkapp-passphrase
+# Use - prefix to ignore failure if network already exists
+ExecStartPre=-/usr/bin/docker network create saaslocalnetwork
+ExecStart=/opt/dkapp/dkapp-startup.sh db-docker-compose.yml
+ExecStop=/usr/bin/docker compose -f /opt/dkapp/db-docker-compose.yml down
+TimeoutStartSec=300
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

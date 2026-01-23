@@ -5,6 +5,7 @@ networks:
 services:
   req-router:
     image: ${DK_REQ_ROUTER_IMAGE:-public.ecr.aws/n5k3t9x2/req_router}:${DK_REQ_ROUTER_TAG:-latest}
+    restart: always
     networks:
       - saaslocalnetwork
     command: ["sh", "src/wait-for-it.sh"]
@@ -59,6 +60,7 @@ services:
 
   conv-mgr:
     image: ${DK_CONV_MGR_IMAGE:-public.ecr.aws/n5k3t9x2/conv_mgr}:${DK_CONV_MGR_TAG:-latest}
+    restart: always
     networks:
       - saaslocalnetwork
     depends_on:
@@ -83,15 +85,17 @@ services:
     environment:
       - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
       - DagKnowsReqRouterHost=${DAGKNOWS_URL}
-    restart: on-failure
+    restart: always
 
   ansi-processing:
     image: ${DK_ANSI_PROCESSING_IMAGE:-public.ecr.aws/n5k3t9x2/ansi_processing}:${DK_ANSI_PROCESSING_TAG:-latest}
+    restart: always
     networks:
       - saaslocalnetwork
 
   settings:
     image: ${DK_SETTINGS_IMAGE:-public.ecr.aws/n5k3t9x2/settings}:${DK_SETTINGS_TAG:-latest}
+    restart: always
     networks:
       - saaslocalnetwork
     depends_on:
@@ -116,7 +120,7 @@ services:
     command: ["python", "src/settings.py"]
   wsfe:
     image: ${DK_WSFE_IMAGE:-public.ecr.aws/n5k3t9x2/wsfe}:${DK_WSFE_TAG:-latest}
-    restart: unless-stopped
+    restart: always
     networks:
       - saaslocalnetwork
     environment:
@@ -129,6 +133,7 @@ services:
 
   jobsched:
     image: ${DK_JOBSCHED_IMAGE:-public.ecr.aws/n5k3t9x2/jobsched}:${DK_JOBSCHED_TAG:-latest}
+    restart: always
     networks:
       - saaslocalnetwork
     depends_on:
@@ -147,6 +152,7 @@ services:
 
   taskservice:
     image: ${DK_TASKSERVICE_IMAGE:-public.ecr.aws/n5k3t9x2/taskservice}:${DK_TASKSERVICE_TAG:-latest}
+    restart: always
     networks:
       - saaslocalnetwork
     command: ["python", "src/gateway.py"]
@@ -186,6 +192,7 @@ services:
 
   nginx:
     image: nginx:latest
+    restart: always
     networks:
       - saaslocalnetwork
     volumes:
@@ -202,6 +209,7 @@ services:
 
   dagknows-nuxt:
     image: ${DK_DAGKNOWS_NUXT_IMAGE:-public.ecr.aws/n5k3t9x2/dagknows_nuxt}:${DK_DAGKNOWS_NUXT_TAG:-latest}
+    restart: always
     networks:
       - saaslocalnetwork
     command: node .output/server/index.mjs
