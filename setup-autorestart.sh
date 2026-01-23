@@ -92,11 +92,12 @@ case $choice in
         echo ""
 
         # Verify passphrase works (use --passphrase-fd to avoid exposing in process list)
+        # Note: --pinentry-mode loopback is required for GPG 2.x when reading passphrase from stdin
         echo "Verifying passphrase..."
         test_file=$(mktemp)
         chmod 600 "$test_file"
         trap "rm -f $test_file" EXIT
-        if echo "$passphrase" | gpg --batch --passphrase-fd 0 -o "$test_file" -d "$SCRIPT_DIR/.env.gpg" 2>/dev/null; then
+        if echo "$passphrase" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 -o "$test_file" -d "$SCRIPT_DIR/.env.gpg" 2>/dev/null; then
             rm -f "$test_file"
             print_success "Passphrase verified successfully"
 
@@ -119,7 +120,8 @@ case $choice in
         echo ""
 
         # Use --passphrase-fd to avoid exposing passphrase in process list
-        if echo "$passphrase" | gpg --batch --passphrase-fd 0 -o "$SCRIPT_DIR/.env" -d "$SCRIPT_DIR/.env.gpg" 2>/dev/null; then
+        # Note: --pinentry-mode loopback is required for GPG 2.x when reading passphrase from stdin
+        if echo "$passphrase" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 -o "$SCRIPT_DIR/.env" -d "$SCRIPT_DIR/.env.gpg" 2>/dev/null; then
             chmod 600 "$SCRIPT_DIR/.env"
             print_success ".env file decrypted"
             print_warning "WARNING: .env file is now unencrypted. Ensure proper file permissions."
