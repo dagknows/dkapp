@@ -98,7 +98,11 @@ This one-time setup:
 
 After setup, all services will automatically start when your system boots - no manual intervention needed.
 
-For details, see [AUTO-RESTART.md](AUTO-RESTART.md).
+**Additional commands:**
+```bash
+make autorestart-status    # Check configuration
+make disable-autorestart   # Remove auto-restart
+```
 
 ## Manual Installation
 
