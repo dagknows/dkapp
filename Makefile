@@ -10,6 +10,7 @@ DBLOG_PID_FILE=./dblogs/.capture.pid
 .PHONY: dblogs dblogs-start dblogs-stop dblogs-today dblogs-errors dblogs-service dblogs-search dblogs-rotate dblogs-status dblogs-clean dblogs-cron-install dblogs-cron-remove dblogdirs
 .PHONY: version version-history version-pull version-set rollback rollback-service rollback-to update-safe check-updates ecr-login migrate-versions
 .PHONY: setup-autorestart disable-autorestart autorestart-status
+.PHONY: start stop restart update
 
 encrypt:
 	gpg -c .env
@@ -361,10 +362,15 @@ help:
 	@echo "  make dblogs-cron-install - Setup daily DB log rotation"
 	@echo "  make dblogs-cron-remove  - Remove DB log rotation cron job"
 	@echo ""
+	@echo "Service Control (Recommended):"
+	@echo "  make start        - Start all services (auto-detects mode)"
+	@echo "  make stop         - Stop all services"
+	@echo "  make restart      - Restart all services"
+	@echo "  make update       - Pull latest images and restart"
+	@echo ""
 	@echo "Maintenance:"
 	@echo "  make pull         - Pull latest Docker images"
 	@echo "  make build        - Build Docker images"
-	@echo "  make update       - Update to latest version"
 	@echo "  make backups      - Backup all data"
 	@echo ""
 	@echo "Version Management:"
@@ -379,7 +385,11 @@ help:
 	@echo "  make disable-autorestart - Disable auto-start and remove services"
 	@echo "  make autorestart-status  - Check auto-restart configuration"
 	@echo ""
-	@echo "Note: Commands that access encrypted files will prompt for password"
+	@echo "Legacy Commands (manual passphrase entry):"
+	@echo "  make updb         - Start databases (prompts for passphrase)"
+	@echo "  make up           - Start app services (prompts for passphrase)"
+	@echo ""
+	@echo "Note: Use 'make start/stop/restart/update' for simplified operations"
 
 # ============================================
 # VERSION MANAGEMENT
@@ -563,3 +573,58 @@ autorestart-status:
 	else \
 		echo "  Not present (manual password entry required)"; \
 	fi
+
+# ==============================================
+# SMART START/STOP/RESTART (Auto-detects mode)
+# ==============================================
+
+# Smart start: uses systemctl if auto-restart configured, otherwise traditional method
+start:
+	@if [ -f /etc/systemd/system/dkapp-db.service ] && [ -f /root/.dkapp-passphrase ]; then \
+		echo "Starting services via systemd (auto-restart mode)..."; \
+		sudo systemctl start dkapp-db.service; \
+		echo "Waiting for databases to be ready..."; \
+		sleep 5; \
+		sudo systemctl start dkapp.service; \
+		echo "Services started. Use 'make status' to check."; \
+	elif [ -f .env ]; then \
+		echo "Starting services (unencrypted .env mode)..."; \
+		docker network create saaslocalnetwork 2>/dev/null || true; \
+		docker compose -f db-docker-compose.yml up -d; \
+		echo "Waiting for databases..."; \
+		sleep 10; \
+		docker compose up -d; \
+		echo "Services started. Use 'make status' to check."; \
+	else \
+		echo "Starting services (manual mode - passphrase required)..."; \
+		echo "Run: make updb && make up"; \
+	fi
+
+# Smart stop: stops all services
+stop:
+	@echo "Stopping all services..."
+	@if [ -f /etc/systemd/system/dkapp.service ]; then \
+		sudo systemctl stop dkapp.service 2>/dev/null || true; \
+		sudo systemctl stop dkapp-db.service 2>/dev/null || true; \
+	fi
+	@docker compose down 2>/dev/null || true
+	@docker compose -f db-docker-compose.yml down 2>/dev/null || true
+	@echo "All services stopped."
+
+# Smart restart: stop then start
+restart: stop start
+
+# Smart update: pull new images and restart
+update:
+	@echo "=== Updating DagKnows ==="
+	@echo ""
+	@echo "Stopping services..."
+	@$(MAKE) stop
+	@echo ""
+	@echo "Pulling latest images..."
+	@$(MAKE) pull
+	@echo ""
+	@echo "Starting services..."
+	@$(MAKE) start
+	@echo ""
+	@echo "Update complete. Use 'make status' to verify."
