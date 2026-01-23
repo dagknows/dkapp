@@ -569,7 +569,7 @@ autorestart-status:
 	fi
 	@echo ""
 	@echo "Passphrase file:"
-	@if [ -f /root/.dkapp-passphrase ]; then \
+	@if sudo test -f /root/.dkapp-passphrase 2>/dev/null; then \
 		echo "  Present (auto-decrypt enabled)"; \
 	else \
 		echo "  Not present (manual password entry required)"; \
@@ -580,8 +580,9 @@ autorestart-status:
 # ==============================================
 
 # Smart start: uses systemctl if auto-restart configured, otherwise traditional method
+# Note: Use 'sudo test' for /root/.dkapp-passphrase since it's only readable by root
 start:
-	@if [ -f /etc/systemd/system/dkapp-db.service ] && [ -f /root/.dkapp-passphrase ]; then \
+	@if [ -f /etc/systemd/system/dkapp-db.service ] && sudo test -f /root/.dkapp-passphrase; then \
 		echo "Starting services via systemd (auto-restart mode)..."; \
 		sudo systemctl start dkapp-db.service; \
 		echo "Waiting for databases to be ready..."; \
