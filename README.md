@@ -71,18 +71,34 @@ Once installation is complete, you can access DagKnows at the URL you configured
 
 **Useful Commands:**
 ```bash
+make start         # Start all services (auto-detects best method)
+make stop          # Stop all services
+make restart       # Restart all services
+make update        # Pull latest images and restart
 make logs          # View application logs
 make dblogs        # View database logs (live)
-make dblogs-errors # View database errors (OOM, killed, etc.)
-make down          # Stop all services (app + databases)
-make up            # Start application services (prompts for password)
-make updb          # Start databases (waits for healthy + auto DB log capture)
-make restart       # Restart all services (prompts for password)
-make pull          # Pull latest Docker images from public ECR
+make status        # Show service status
 make help          # Show all available commands
 ```
 
 **Note:** Commands that require access to the encrypted `.env` file will prompt for your encryption password (which should be the same as your Super User password if you followed the wizard's recommendation).
+
+### Auto-Restart on System Reboot (Recommended)
+
+To ensure DagKnows automatically restarts after system reboots:
+
+```bash
+make setup-autorestart
+```
+
+This one-time setup:
+- Stores your passphrase securely for automatic decryption
+- Installs systemd services for reliable startup ordering
+- Enables automatic recovery from system restarts
+
+After setup, all services will automatically start when your system boots - no manual intervention needed.
+
+For details, see [AUTO-RESTART.md](AUTO-RESTART.md).
 
 ## Manual Installation
 
