@@ -188,8 +188,9 @@ down: logs-stop dblogs-stop
 	docker compose -f docker-compose.yml down --remove-orphans
 	docker compose -f db-docker-compose.yml down --remove-orphans
 
-update: down pull build
-	echo "App updated.  Bring it up again with `make updb up logs`"
+# Legacy update (use 'make update' instead for smart restart)
+update-build: down pull build
+	echo "App updated. Bring it up again with 'make start' or 'make updb up logs'"
 
 up: ensurenetworks logdirs
 	gpg -o .env -d .env.gpg
