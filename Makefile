@@ -688,7 +688,7 @@ update:
 	@$(MAKE) stop
 	@echo ""
 	@echo "Pulling latest images..."
-	@$(MAKE) pull
+	@$(MAKE) pull-latest
 	@echo ""
 	@echo "Starting services..."
 	@$(MAKE) start
