@@ -71,10 +71,11 @@ Once installation is complete, you can access DagKnows at the URL you configured
 
 **Useful Commands:**
 ```bash
-make start         # Start all services (auto-detects best method)
-make stop          # Stop all services
+make start         # Start all services (health checks, versioning, log capture)
+make stop          # Stop all services and log capture processes
 make restart       # Restart all services
 make update        # Pull latest images and restart
+make pull-latest   # Pull latest images (ignores version manifest)
 make logs          # View application logs
 make dblogs        # View database logs (live)
 make status        # Show service status
