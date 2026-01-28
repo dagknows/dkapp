@@ -69,6 +69,40 @@ if ! docker compose -f "$DKAPP_DIR/$COMPOSE_FILE" up -d; then
     exit 1
 fi
 
+# Wait for containers to stabilize before starting log capture
+log "Waiting for containers to stabilize..."
+sleep 3
+
+# Start background log capture
+LOG_CAPTURE_DIR="$DKAPP_DIR/logs"
+DBLOG_CAPTURE_DIR="$DKAPP_DIR/dblogs"
+
+mkdir -p "$LOG_CAPTURE_DIR" "$DBLOG_CAPTURE_DIR"
+
+if [ "$COMPOSE_FILE" = "db-docker-compose.yml" ]; then
+    # Start database log capture
+    DBLOG_PID_FILE="$DBLOG_CAPTURE_DIR/.capture.pid"
+    if [ ! -f "$DBLOG_PID_FILE" ] || ! kill -0 $(cat "$DBLOG_PID_FILE") 2>/dev/null; then
+        log "Starting background database log capture"
+        nohup docker compose -f "$DKAPP_DIR/db-docker-compose.yml" logs -f >> "$DBLOG_CAPTURE_DIR/$(date +%Y-%m-%d).log" 2>&1 &
+        echo $! > "$DBLOG_PID_FILE"
+        log "Database log capture started (PID: $!)"
+    else
+        log "Database log capture already running (PID: $(cat "$DBLOG_PID_FILE"))"
+    fi
+elif [ "$COMPOSE_FILE" = "docker-compose.yml" ]; then
+    # Start application log capture
+    LOG_PID_FILE="$LOG_CAPTURE_DIR/.capture.pid"
+    if [ ! -f "$LOG_PID_FILE" ] || ! kill -0 $(cat "$LOG_PID_FILE") 2>/dev/null; then
+        log "Starting background application log capture"
+        nohup docker compose -f "$DKAPP_DIR/docker-compose.yml" logs -f >> "$LOG_CAPTURE_DIR/$(date +%Y-%m-%d).log" 2>&1 &
+        echo $! > "$LOG_PID_FILE"
+        log "Application log capture started (PID: $!)"
+    else
+        log "Application log capture already running (PID: $(cat "$LOG_PID_FILE"))"
+    fi
+fi
+
 # If passphrase file was used, clean up the decrypted .env file
 if [ -f "$PASSPHRASE_FILE" ] && [ -f "$ENV_FILE" ]; then
     rm -f "$ENV_FILE"
