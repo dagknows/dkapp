@@ -589,7 +589,7 @@ autorestart-status:
 # Smart start: uses systemctl if auto-restart configured, otherwise traditional method
 # Note: Use 'sudo test' for /root/.dkapp-passphrase since it's only readable by root
 # Features: network creation, directory setup, health checks, version management, log capture
-start: logdirs dblogdirs
+start: stop logdirs dblogdirs
 	@if [ -f /etc/systemd/system/dkapp-db.service ] && sudo test -f /root/.dkapp-passphrase; then \
 		echo "Starting services via systemd (auto-restart mode)..."; \
 		sudo systemctl start dkapp-db.service; \
