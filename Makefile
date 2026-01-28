@@ -49,10 +49,19 @@ logs-errors:
 	@grep -i "error\|exception\|fail" $(LOG_DIR)/*.log 2>/dev/null || echo "No errors found in captured logs"
 
 logs-service:
-	@grep "^$(SERVICE)" $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>/dev/null || echo "No logs for $(SERVICE). Try: make logs-service SERVICE=req-router"
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "Usage: make logs-service SERVICE=<service-name>"; \
+		echo "Example: make logs-service SERVICE=req-router"; \
+	else \
+		grep "^$(SERVICE)" $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>/dev/null || echo "No logs for $(SERVICE)."; \
+	fi
 
 logs-search:
-	@grep -i "$(PATTERN)" $(LOG_DIR)/*.log 2>/dev/null || echo "Pattern '$(PATTERN)' not found"
+	@if [ -z "$(PATTERN)" ]; then \
+		echo "Usage: make logs-search PATTERN='text'"; \
+	else \
+		grep -i "$(PATTERN)" $(LOG_DIR)/*.log 2>/dev/null || echo "Pattern '$(PATTERN)' not found"; \
+	fi
 
 logs-rotate:
 	@find $(LOG_DIR) -name "*.log" -mtime +3 -exec gzip {} \; 2>/dev/null || true
@@ -210,7 +219,7 @@ up: ensurenetworks logdirs
 	sleep 5
 	rm -f .env
 	@echo "Starting background log capture..."
-	@nohup docker compose logs -f >> $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & echo $$! > $(LOG_PID_FILE)
+	@$(MAKE) logs-start
 
 
 ensurenetworks:
@@ -326,12 +335,6 @@ help:
 	@echo "  make encrypt      - Encrypt the .env file"
 	@echo "  make reconfigure  - Update configuration without reinstalling"
 	@echo ""
-	@echo "Service Management:"
-	@echo "  make updb         - Start databases (waits for healthy + auto DB log capture)"
-	@echo "  make up           - Start application services (+ auto log capture)"
-	@echo "  make down         - Stop all services (app + databases + log captures)"
-	@echo "  make restart      - Restart all services"
-	@echo ""
 	@echo "Monitoring:"
 	@echo "  make logs         - View application logs (follow mode)"
 	@echo "  make dblogs       - View database logs (follow mode)"
@@ -390,10 +393,11 @@ help:
 	@echo "  make autorestart-status  - Check auto-restart configuration"
 	@echo ""
 	@echo "Legacy Commands (manual passphrase entry):"
-	@echo "  make updb         - Start databases (prompts for passphrase)"
-	@echo "  make up           - Start app services (prompts for passphrase)"
+	@echo "  make updb         - Start databases only (prompts for passphrase)"
+	@echo "  make up           - Start app services only (prompts for passphrase)"
+	@echo "  make down         - Stop all containers and log captures"
 	@echo ""
-	@echo "Note: Use 'make start/stop/restart/update' for simplified operations"
+	@echo "Tip: Use 'make start/stop/restart/update' for simplified operations"
 
 # ============================================
 # VERSION MANAGEMENT
