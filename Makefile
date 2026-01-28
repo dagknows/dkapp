@@ -581,29 +581,90 @@ autorestart-status:
 
 # Smart start: uses systemctl if auto-restart configured, otherwise traditional method
 # Note: Use 'sudo test' for /root/.dkapp-passphrase since it's only readable by root
-start:
+# Features: network creation, directory setup, health checks, version management, log capture
+start: logdirs dblogdirs
 	@if [ -f /etc/systemd/system/dkapp-db.service ] && sudo test -f /root/.dkapp-passphrase; then \
 		echo "Starting services via systemd (auto-restart mode)..."; \
 		sudo systemctl start dkapp-db.service; \
 		echo "Waiting for databases to be ready..."; \
 		sleep 5; \
 		sudo systemctl start dkapp.service; \
-		echo "Services started. Use 'make status' to check."; \
+		echo "Services started. Starting background log capture..."; \
+		$(MAKE) dblogs-start; \
+		$(MAKE) logs-start; \
+		echo "Done. Use 'make status' to check."; \
 	elif [ -f .env ]; then \
 		echo "Starting services (unencrypted .env mode)..."; \
+		echo ""; \
+		echo "=== Setting up directories ==="; \
+		mkdir -p postgres-data esdata1 elastic_backup 2>/dev/null || true; \
+		sudo chmod -R a+rwx postgres-data esdata1 elastic_backup 2>/dev/null || true; \
+		echo ""; \
+		echo "=== Creating Docker network ==="; \
 		docker network create saaslocalnetwork 2>/dev/null || true; \
+		echo ""; \
+		echo "=== Starting database services ==="; \
+		docker compose -f db-docker-compose.yml down --remove-orphans 2>/dev/null || true; \
 		docker compose -f db-docker-compose.yml up -d; \
-		echo "Waiting for databases..."; \
-		sleep 10; \
-		docker compose up -d; \
+		echo ""; \
+		echo "=== Waiting for PostgreSQL (up to 60s) ==="; \
+		i=0; while [ $$i -lt 30 ]; do \
+			if docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
+				echo "  PostgreSQL: ready"; \
+				break; \
+			fi; \
+			echo "  Waiting for PostgreSQL... ($$i/30)"; \
+			sleep 2; \
+			i=$$((i + 1)); \
+		done; \
+		if [ $$i -ge 30 ]; then \
+			echo "ERROR: PostgreSQL failed to become ready after 60s"; \
+			exit 1; \
+		fi; \
+		echo ""; \
+		echo "=== Waiting for Elasticsearch (up to 120s) ==="; \
+		i=0; while [ $$i -lt 40 ]; do \
+			if curl -sf "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null 2>&1; then \
+				echo "  Elasticsearch: ready"; \
+				break; \
+			fi; \
+			echo "  Waiting for Elasticsearch... ($$i/40)"; \
+			sleep 3; \
+			i=$$((i + 1)); \
+		done; \
+		if [ $$i -ge 40 ]; then \
+			echo "ERROR: Elasticsearch failed to become ready after 120s"; \
+			exit 1; \
+		fi; \
+		echo ""; \
+		echo "=== Setting up version management ==="; \
+		if [ -f "version-manifest.yaml" ]; then \
+			echo "  Generating versions.env from manifest..."; \
+			python3 version-manager.py generate-env 2>/dev/null || true; \
+		fi; \
+		echo ""; \
+		echo "=== Starting application services ==="; \
+		if [ -f "versions.env" ]; then \
+			echo "  Loading version overrides from versions.env"; \
+			set -a && . ./versions.env && set +a && \
+			docker compose -f docker-compose.yml up -d; \
+		else \
+			echo "  Using default image tags (no versions.env)"; \
+			docker compose -f docker-compose.yml up -d; \
+		fi; \
+		echo ""; \
+		echo "=== Starting background log capture ==="; \
+		$(MAKE) dblogs-start; \
+		$(MAKE) logs-start; \
+		echo ""; \
 		echo "Services started. Use 'make status' to check."; \
 	else \
 		echo "Starting services (manual mode - passphrase required)..."; \
 		echo "Run: make updb && make up"; \
 	fi
 
-# Smart stop: stops all services
-stop:
+# Smart stop: stops all services and log capture processes
+stop: logs-stop dblogs-stop
 	@echo "Stopping all services..."
 	@if [ -f /etc/systemd/system/dkapp.service ]; then \
 		sudo systemctl stop dkapp.service 2>/dev/null || true; \
