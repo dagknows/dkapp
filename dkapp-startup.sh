@@ -78,6 +78,13 @@ LOG_CAPTURE_DIR="$DKAPP_DIR/logs"
 DBLOG_CAPTURE_DIR="$DKAPP_DIR/dblogs"
 
 mkdir -p "$LOG_CAPTURE_DIR" "$DBLOG_CAPTURE_DIR"
+# Ensure directories are writable by the dkapp owner (not just root)
+if [ -d "$DKAPP_DIR" ]; then
+    DKAPP_OWNER=$(stat -c '%U:%G' "$DKAPP_DIR" 2>/dev/null || stat -f '%Su:%Sg' "$DKAPP_DIR" 2>/dev/null)
+    if [ -n "$DKAPP_OWNER" ] && [ "$DKAPP_OWNER" != "root:root" ]; then
+        chown -R "$DKAPP_OWNER" "$LOG_CAPTURE_DIR" "$DBLOG_CAPTURE_DIR" 2>/dev/null || true
+    fi
+fi
 
 if [ "$COMPOSE_FILE" = "db-docker-compose.yml" ]; then
     # Start database log capture

@@ -22,6 +22,7 @@ logs:
 # Log Management - Capture and filter logs
 logdirs:
 	@mkdir -p $(LOG_DIR)
+	@sudo chown -R $$(id -u):$$(id -g) $(LOG_DIR) 2>/dev/null || true
 
 logs-start: logdirs
 	@if [ -f $(LOG_PID_FILE) ] && kill -0 $$(cat $(LOG_PID_FILE)) 2>/dev/null; then \
@@ -85,6 +86,7 @@ logs-cron-remove:
 
 dblogdirs:
 	@mkdir -p $(DBLOG_DIR)
+	@sudo chown -R $$(id -u):$$(id -g) $(DBLOG_DIR) 2>/dev/null || true
 
 dblogs-start: dblogdirs
 	@if [ -f $(DBLOG_PID_FILE) ] && kill -0 $$(cat $(DBLOG_PID_FILE)) 2>/dev/null; then \
