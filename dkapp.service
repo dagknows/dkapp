@@ -1,0 +1,25 @@
+[Unit]
+Description=DagKnows Application Services
+Requires=docker.service dkapp-db.service
+After=docker.service dkapp-db.service time-sync.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/dkapp
+Environment=DKAPP_DIR=/opt/dkapp
+Environment=PASSPHRASE_FILE=/root/.dkapp-passphrase
+
+# Wait for PostgreSQL to be ready (use while loop as brace expansion doesn't work in -c)
+ExecStartPre=/bin/bash -c 'echo "Waiting for PostgreSQL..."; i=0; while [ $i -lt 60 ]; do docker compose -f /opt/dkapp/db-docker-compose.yml exec -T postgres pg_isready -U postgres && break || sleep 2; i=$((i+1)); done'
+
+# Wait for Elasticsearch to be ready
+ExecStartPre=/bin/bash -c 'echo "Waiting for Elasticsearch..."; i=0; while [ $i -lt 60 ]; do curl -sf "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" && break || sleep 3; i=$((i+1)); done'
+
+ExecStart=/opt/dkapp/dkapp-startup.sh docker-compose.yml
+ExecStop=/usr/bin/docker compose -f /opt/dkapp/docker-compose.yml down
+TimeoutStartSec=600
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

@@ -9,6 +9,8 @@ DBLOG_PID_FILE=./dblogs/.capture.pid
 .PHONY: logs logs-start logs-stop logs-today logs-errors logs-service logs-search logs-rotate logs-status logs-clean logs-cron-install logs-cron-remove logdirs
 .PHONY: dblogs dblogs-start dblogs-stop dblogs-today dblogs-errors dblogs-service dblogs-search dblogs-rotate dblogs-status dblogs-clean dblogs-cron-install dblogs-cron-remove dblogdirs
 .PHONY: version version-history version-pull version-set rollback rollback-service rollback-to update-safe check-updates ecr-login migrate-versions
+.PHONY: setup-autorestart disable-autorestart autorestart-status
+.PHONY: start stop restart update
 
 encrypt:
 	gpg -c .env
@@ -20,6 +22,7 @@ logs:
 # Log Management - Capture and filter logs
 logdirs:
 	@mkdir -p $(LOG_DIR)
+	@sudo chown -R $$(id -u):$$(id -g) $(LOG_DIR) 2>/dev/null || true
 
 logs-start: logdirs
 	@if [ -f $(LOG_PID_FILE) ] && kill -0 $$(cat $(LOG_PID_FILE)) 2>/dev/null; then \
@@ -46,10 +49,19 @@ logs-errors:
 	@grep -i "error\|exception\|fail" $(LOG_DIR)/*.log 2>/dev/null || echo "No errors found in captured logs"
 
 logs-service:
-	@grep "^$(SERVICE)" $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>/dev/null || echo "No logs for $(SERVICE). Try: make logs-service SERVICE=req-router"
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "Usage: make logs-service SERVICE=<service-name>"; \
+		echo "Example: make logs-service SERVICE=req-router"; \
+	else \
+		grep "^$(SERVICE)" $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>/dev/null || echo "No logs for $(SERVICE)."; \
+	fi
 
 logs-search:
-	@grep -i "$(PATTERN)" $(LOG_DIR)/*.log 2>/dev/null || echo "Pattern '$(PATTERN)' not found"
+	@if [ -z "$(PATTERN)" ]; then \
+		echo "Usage: make logs-search PATTERN='text'"; \
+	else \
+		grep -i "$(PATTERN)" $(LOG_DIR)/*.log 2>/dev/null || echo "Pattern '$(PATTERN)' not found"; \
+	fi
 
 logs-rotate:
 	@find $(LOG_DIR) -name "*.log" -mtime +3 -exec gzip {} \; 2>/dev/null || true
@@ -83,6 +95,7 @@ logs-cron-remove:
 
 dblogdirs:
 	@mkdir -p $(DBLOG_DIR)
+	@sudo chown -R $$(id -u):$$(id -g) $(DBLOG_DIR) 2>/dev/null || true
 
 dblogs-start: dblogdirs
 	@if [ -f $(DBLOG_PID_FILE) ] && kill -0 $$(cat $(DBLOG_PID_FILE)) 2>/dev/null; then \
@@ -186,8 +199,9 @@ down: logs-stop dblogs-stop
 	docker compose -f docker-compose.yml down --remove-orphans
 	docker compose -f db-docker-compose.yml down --remove-orphans
 
-update: down pull build
-	echo "App updated.  Bring it up again with `make updb up logs`"
+# Legacy update (use 'make update' instead for smart restart)
+update-build: down pull build
+	echo "App updated. Bring it up again with 'make start' or 'make updb up logs'"
 
 up: ensurenetworks logdirs
 	gpg -o .env -d .env.gpg
@@ -205,7 +219,7 @@ up: ensurenetworks logdirs
 	sleep 5
 	rm -f .env
 	@echo "Starting background log capture..."
-	@nohup docker compose logs -f >> $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & echo $$! > $(LOG_PID_FILE)
+	@$(MAKE) logs-start
 
 
 ensurenetworks:
@@ -321,12 +335,6 @@ help:
 	@echo "  make encrypt      - Encrypt the .env file"
 	@echo "  make reconfigure  - Update configuration without reinstalling"
 	@echo ""
-	@echo "Service Management:"
-	@echo "  make updb         - Start databases (waits for healthy + auto DB log capture)"
-	@echo "  make up           - Start application services (+ auto log capture)"
-	@echo "  make down         - Stop all services (app + databases + log captures)"
-	@echo "  make restart      - Restart all services"
-	@echo ""
 	@echo "Monitoring:"
 	@echo "  make logs         - View application logs (follow mode)"
 	@echo "  make dblogs       - View database logs (follow mode)"
@@ -360,10 +368,16 @@ help:
 	@echo "  make dblogs-cron-install - Setup daily DB log rotation"
 	@echo "  make dblogs-cron-remove  - Remove DB log rotation cron job"
 	@echo ""
+	@echo "Service Control (Recommended):"
+	@echo "  make start        - Start all services (health checks, versioning, log capture)"
+	@echo "  make stop         - Stop all services and log capture processes"
+	@echo "  make restart      - Restart all services"
+	@echo "  make update       - Pull latest images and restart"
+	@echo ""
 	@echo "Maintenance:"
-	@echo "  make pull         - Pull latest Docker images"
+	@echo "  make pull         - Pull images from version manifest"
+	@echo "  make pull-latest  - Pull latest images (ignores manifest)"
 	@echo "  make build        - Build Docker images"
-	@echo "  make update       - Update to latest version"
 	@echo "  make backups      - Backup all data"
 	@echo ""
 	@echo "Version Management:"
@@ -373,7 +387,17 @@ help:
 	@echo "  make rollback      - Rollback to previous versions"
 	@echo "  make help-version  - Show all version management commands"
 	@echo ""
-	@echo "Note: Commands that access encrypted files will prompt for password"
+	@echo "Auto-Restart (System Boot):"
+	@echo "  make setup-autorestart   - Setup auto-start on system reboot"
+	@echo "  make disable-autorestart - Disable auto-start and remove services"
+	@echo "  make autorestart-status  - Check auto-restart configuration"
+	@echo ""
+	@echo "Legacy Commands (manual passphrase entry):"
+	@echo "  make updb         - Start databases only (prompts for passphrase)"
+	@echo "  make up           - Start app services only (prompts for passphrase)"
+	@echo "  make down         - Stop all containers and log captures"
+	@echo ""
+	@echo "Tip: Use 'make start/stop/restart/update' for simplified operations"
 
 # ============================================
 # VERSION MANAGEMENT
@@ -508,3 +532,169 @@ help-version:
 	@echo "  make whatversion  = make version"
 	@echo "  make info         = make status version"
 	@echo "  make health       = make status check-updates"
+
+# ==============================================
+# AUTO-RESTART MANAGEMENT
+# ==============================================
+
+# Setup automatic restart on system boot
+setup-autorestart:
+	@echo "Setting up automatic restart on system boot..."
+	@sudo bash ./setup-autorestart.sh
+
+# Disable automatic restart
+disable-autorestart:
+	@echo "Disabling automatic restart..."
+	@sudo systemctl disable dkapp-db.service dkapp.service 2>/dev/null || true
+	@sudo systemctl stop dkapp-db.service dkapp.service 2>/dev/null || true
+	@sudo rm -f /etc/systemd/system/dkapp-db.service /etc/systemd/system/dkapp.service
+	@sudo rm -f /root/.dkapp-passphrase
+	@sudo systemctl daemon-reload
+	@echo "Auto-restart disabled. Services removed."
+
+# Check auto-restart status
+autorestart-status:
+	@echo "=== Auto-Restart Status ==="
+	@echo ""
+	@echo "Docker service:"
+	@systemctl is-enabled docker 2>/dev/null && echo "  Enabled" || echo "  Disabled"
+	@echo ""
+	@echo "DagKnows Database Service (dkapp-db):"
+	@if [ -f /etc/systemd/system/dkapp-db.service ]; then \
+		systemctl is-enabled dkapp-db.service 2>/dev/null && echo "  Enabled" || echo "  Disabled"; \
+		echo "  Status: $$(systemctl is-active dkapp-db.service 2>/dev/null || echo 'not running')"; \
+	else \
+		echo "  Not installed"; \
+	fi
+	@echo ""
+	@echo "DagKnows Application Service (dkapp):"
+	@if [ -f /etc/systemd/system/dkapp.service ]; then \
+		systemctl is-enabled dkapp.service 2>/dev/null && echo "  Enabled" || echo "  Disabled"; \
+		echo "  Status: $$(systemctl is-active dkapp.service 2>/dev/null || echo 'not running')"; \
+	else \
+		echo "  Not installed"; \
+	fi
+	@echo ""
+	@echo "Passphrase file:"
+	@if sudo test -f /root/.dkapp-passphrase 2>/dev/null; then \
+		echo "  Present (auto-decrypt enabled)"; \
+	else \
+		echo "  Not present (manual password entry required)"; \
+	fi
+
+# ==============================================
+# SMART START/STOP/RESTART (Auto-detects mode)
+# ==============================================
+
+# Smart start: uses systemctl if auto-restart configured, otherwise traditional method
+# Note: Use 'sudo test' for /root/.dkapp-passphrase since it's only readable by root
+# Features: network creation, directory setup, health checks, version management, log capture
+start: stop logdirs dblogdirs
+	@if [ -f /etc/systemd/system/dkapp-db.service ] && sudo test -f /root/.dkapp-passphrase; then \
+		echo "Starting services via systemd (auto-restart mode)..."; \
+		sudo systemctl start dkapp-db.service; \
+		echo "Waiting for databases to be ready..."; \
+		sleep 5; \
+		sudo systemctl start dkapp.service; \
+		echo "Services started. Starting background log capture..."; \
+		$(MAKE) dblogs-start; \
+		$(MAKE) logs-start; \
+		echo "Done. Use 'make status' to check."; \
+	elif [ -f .env ]; then \
+		echo "Starting services (unencrypted .env mode)..."; \
+		echo ""; \
+		echo "=== Setting up directories ==="; \
+		mkdir -p postgres-data esdata1 elastic_backup 2>/dev/null || true; \
+		sudo chmod -R a+rwx postgres-data esdata1 elastic_backup 2>/dev/null || true; \
+		echo ""; \
+		echo "=== Creating Docker network ==="; \
+		docker network create saaslocalnetwork 2>/dev/null || true; \
+		echo ""; \
+		echo "=== Starting database services ==="; \
+		docker compose -f db-docker-compose.yml down --remove-orphans 2>/dev/null || true; \
+		docker compose -f db-docker-compose.yml up -d; \
+		echo ""; \
+		echo "=== Waiting for PostgreSQL (up to 60s) ==="; \
+		i=0; while [ $$i -lt 30 ]; do \
+			if docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
+				echo "  PostgreSQL: ready"; \
+				break; \
+			fi; \
+			echo "  Waiting for PostgreSQL... ($$i/30)"; \
+			sleep 2; \
+			i=$$((i + 1)); \
+		done; \
+		if [ $$i -ge 30 ]; then \
+			echo "ERROR: PostgreSQL failed to become ready after 60s"; \
+			exit 1; \
+		fi; \
+		echo ""; \
+		echo "=== Waiting for Elasticsearch (up to 120s) ==="; \
+		i=0; while [ $$i -lt 40 ]; do \
+			if curl -sf "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null 2>&1; then \
+				echo "  Elasticsearch: ready"; \
+				break; \
+			fi; \
+			echo "  Waiting for Elasticsearch... ($$i/40)"; \
+			sleep 3; \
+			i=$$((i + 1)); \
+		done; \
+		if [ $$i -ge 40 ]; then \
+			echo "ERROR: Elasticsearch failed to become ready after 120s"; \
+			exit 1; \
+		fi; \
+		echo ""; \
+		echo "=== Setting up version management ==="; \
+		if [ -f "version-manifest.yaml" ]; then \
+			echo "  Generating versions.env from manifest..."; \
+			python3 version-manager.py generate-env 2>/dev/null || true; \
+		fi; \
+		echo ""; \
+		echo "=== Starting application services ==="; \
+		if [ -f "versions.env" ]; then \
+			echo "  Loading version overrides from versions.env"; \
+			set -a && . ./versions.env && set +a && \
+			docker compose -f docker-compose.yml up -d; \
+		else \
+			echo "  Using default image tags (no versions.env)"; \
+			docker compose -f docker-compose.yml up -d; \
+		fi; \
+		echo ""; \
+		echo "=== Starting background log capture ==="; \
+		$(MAKE) dblogs-start; \
+		$(MAKE) logs-start; \
+		echo ""; \
+		echo "Services started. Use 'make status' to check."; \
+	else \
+		echo "Starting services (manual mode - passphrase required)..."; \
+		echo "Run: make updb && make up"; \
+	fi
+
+# Smart stop: stops all services and log capture processes
+stop: logs-stop dblogs-stop
+	@echo "Stopping all services..."
+	@if [ -f /etc/systemd/system/dkapp.service ]; then \
+		sudo systemctl stop dkapp.service 2>/dev/null || true; \
+		sudo systemctl stop dkapp-db.service 2>/dev/null || true; \
+	fi
+	@docker compose down 2>/dev/null || true
+	@docker compose -f db-docker-compose.yml down 2>/dev/null || true
+	@echo "All services stopped."
+
+# Smart restart: stop then start
+restart: stop start
+
+# Smart update: pull new images and restart
+update:
+	@echo "=== Updating DagKnows ==="
+	@echo ""
+	@echo "Stopping services..."
+	@$(MAKE) stop
+	@echo ""
+	@echo "Pulling latest images..."
+	@$(MAKE) pull-latest
+	@echo ""
+	@echo "Starting services..."
+	@$(MAKE) start
+	@echo ""
+	@echo "Update complete. Use 'make status' to verify."

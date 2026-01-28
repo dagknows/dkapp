@@ -5,7 +5,10 @@ This guide explains how logging works in dkapp and how to use it for debugging a
 ## Quick Start
 
 ```bash
-# Start the application (logging starts automatically)
+# Option 1: Smart start (recommended - handles everything)
+make start       # Health checks, versioning, and auto log capture
+
+# Option 2: Manual start
 make updb        # Start databases first
 make up          # Start app + auto-starts background log capture
 
@@ -108,12 +111,26 @@ req-router-1    | 2026-01-09 14:30:01 ERROR Upstream service error
 
 ## Startup Procedure
 
-### Standard Startup
+### Smart Start (Recommended)
+
+```bash
+# Single command handles everything:
+# - Health checks for PostgreSQL and Elasticsearch
+# - Version management (generates versions.env from manifest)
+# - Starts all services
+# - Starts background log capture
+make start
+
+# Check status
+make status
+make logs-status
+```
+
+### Traditional Startup
 
 ```bash
 # 1. Start databases (waits for healthy + auto-starts DB log capture)
 make updb
-# No need to watch dblogs anymore - updb waits for health!
 
 # 2. Start application (auto-starts app log capture)
 make up
@@ -125,11 +142,14 @@ make dblogs-errors
 make logs        # Ctrl+C to exit (capture continues in background)
 ```
 
-### After Restart/Reboot
+### Stopping Services
 
 ```bash
-# Quick restart
-make restart     # Equivalent to: down + updb + up + logs
+# Stops all services AND log capture processes
+make stop
+
+# Or restart everything
+make restart
 ```
 
 ### Checking Status
@@ -140,6 +160,7 @@ docker compose ps
 
 # Check if log capture is running
 make logs-status
+make dblogs-status
 
 # View any errors
 make logs-errors
