@@ -547,11 +547,11 @@ setup-autorestart:
 disable-autorestart:
 	@echo "Disabling automatic restart..."
 	@sudo systemctl disable dkapp-db.service dkapp.service 2>/dev/null || true
-	@sudo systemctl stop dkapp-db.service dkapp.service 2>/dev/null || true
 	@sudo rm -f /etc/systemd/system/dkapp-db.service /etc/systemd/system/dkapp.service
 	@sudo rm -f /root/.dkapp-passphrase
 	@sudo systemctl daemon-reload
 	@echo "Auto-restart disabled. Services removed."
+	@echo "Note: Containers are still running. Use 'make stop' to stop them."
 
 # Check auto-restart status
 autorestart-status:
