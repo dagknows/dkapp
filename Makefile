@@ -223,7 +223,8 @@ up: ensurenetworks logdirs
 
 
 ensurenetworks:
-	-@docker network create saaslocalnetwork
+	@# Network is created automatically by Docker Compose with named network config
+	@true
 
 pull:
 	@# Pull images from manifest if available, otherwise pull latest

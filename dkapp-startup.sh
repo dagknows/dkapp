@@ -22,8 +22,7 @@ log "Starting DagKnows services using $COMPOSE_FILE"
 
 cd "$DKAPP_DIR"
 
-# Ensure network exists
-docker network create saaslocalnetwork 2>/dev/null || true
+# Network is created automatically by Docker Compose with named network config
 
 # Check for passphrase file (auto-restart mode)
 if [ -f "$PASSPHRASE_FILE" ]; then
