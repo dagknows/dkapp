@@ -546,12 +546,16 @@ setup-autorestart:
 # Disable automatic restart
 disable-autorestart:
 	@echo "Disabling automatic restart..."
+	@echo "Stopping containers to prevent restart on reboot..."
+	@sudo systemctl stop dkapp-db.service dkapp.service 2>/dev/null || true
+	@docker compose -f docker-compose.yml down 2>/dev/null || true
+	@docker compose -f db-docker-compose.yml down 2>/dev/null || true
 	@sudo systemctl disable dkapp-db.service dkapp.service 2>/dev/null || true
 	@sudo rm -f /etc/systemd/system/dkapp-db.service /etc/systemd/system/dkapp.service
 	@sudo rm -f /root/.dkapp-passphrase
 	@sudo systemctl daemon-reload
-	@echo "Auto-restart disabled. Services removed."
-	@echo "Note: Containers are still running. Use 'make stop' to stop them."
+	@echo "Auto-restart disabled and containers stopped."
+	@echo "Use 'make start' to start containers again."
 
 # Check auto-restart status
 autorestart-status:
