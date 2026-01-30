@@ -707,13 +707,13 @@ def run_make_up(use_sg=False):
 def print_final_message(dagknows_url, used_sg=False):
     """Print final success message with access instructions"""
     print_header("Installation Complete!")
-    
+
     print_success("DagKnows has been successfully installed!")
     print()
     print(f"{Colors.BOLD}Access your DagKnows instance at:{Colors.ENDC}")
     print(f"{Colors.OKCYAN}{Colors.BOLD}  {dagknows_url}{Colors.ENDC}")
     print()
-    
+
     if used_sg:
         print(f"{Colors.WARNING}{Colors.BOLD}⚠ IMPORTANT - Docker Group Activation:{Colors.ENDC}")
         print(f"{Colors.WARNING}The installation used 'sg docker' to run Docker commands.{Colors.ENDC}")
@@ -729,7 +729,7 @@ def print_final_message(dagknows_url, used_sg=False):
         print(f"{Colors.BOLD}Option 3: Prefix each command{Colors.ENDC}")
         print(f"  {Colors.OKCYAN}sg docker -c 'make logs'{Colors.ENDC}")
         print()
-    
+
     print(f"{Colors.BOLD}Useful commands:{Colors.ENDC}")
     print(f"  {Colors.OKBLUE}make logs{Colors.ENDC}        - View application logs")
     print(f"  {Colors.OKBLUE}make dblogs{Colors.ENDC}      - View database logs")
@@ -739,8 +739,110 @@ def print_final_message(dagknows_url, used_sg=False):
     print(f"  {Colors.OKBLUE}make restart{Colors.ENDC}     - Restart all services")
     print(f"  {Colors.OKBLUE}make status{Colors.ENDC}      - Check system status")
     print()
+    print(f"{Colors.BOLD}Optional Setup Commands:{Colors.ENDC}")
+    print(f"  {Colors.OKBLUE}make setup-autorestart{Colors.ENDC}   - Auto-start on system reboot")
+    print(f"  {Colors.OKBLUE}make setup-log-rotation{Colors.ENDC}  - Daily log rotation")
+    print(f"  {Colors.OKBLUE}make setup-versioning{Colors.ENDC}    - Enable version tracking")
+    print()
     print(f"{Colors.WARNING}Note: Some commands will prompt for your encryption password{Colors.ENDC}")
     print()
+
+
+def offer_log_rotation_setup():
+    """Set up log rotation after services are running (automatic, no prompt)"""
+    print()
+    print(f"{Colors.BOLD}Log Rotation Setup{Colors.ENDC}")
+    print_info("Setting up automatic log rotation:")
+    print("  - Compresses logs older than 3 days")
+    print("  - Deletes logs older than 7 days")
+    print("  - Runs daily at midnight via cron")
+    print("  - Applies to BOTH application and database logs")
+    print()
+
+    # Check if already configured
+    try:
+        result = run_command("crontab -l 2>/dev/null | grep -q 'dkapp.*logs-rotate'", check=False)
+        if result:
+            print_success("Log rotation is already configured")
+            return True
+    except Exception:
+        pass
+
+    print_info("Installing log rotation cron jobs...")
+    try:
+        app_result = run_command("make logs-cron-install", check=False)
+        db_result = run_command("make dblogs-cron-install", check=False)
+
+        if app_result and db_result:
+            print_success("Log rotation cron jobs installed!")
+            return True
+        else:
+            print_warning("Failed to install cron jobs")
+            print_info("You can try later with: make setup-log-rotation")
+            return False
+    except Exception as e:
+        print_warning(f"Could not set up log rotation: {e}")
+        print_info("You can try later with: make setup-log-rotation")
+        return False
+
+
+def offer_autorestart_setup():
+    """Inform about auto-restart setup (requires sudo, not automatic)"""
+    print()
+    print(f"{Colors.BOLD}Auto-Restart Setup{Colors.ENDC}")
+    print_info("Auto-restart ensures services start automatically after system reboot.")
+    print_warning("Note: This requires sudo privileges and GPG passphrase handling.")
+    print()
+
+    # Check if already configured
+    if os.path.exists('/etc/systemd/system/dkapp-db.service'):
+        print_success("Auto-restart is already configured")
+        return True
+
+    print_info("Auto-restart is NOT currently configured.")
+    print_info("To enable, run: make setup-autorestart")
+    print()
+    print_info("This will:")
+    print("  1. Prompt for passphrase handling (file, unencrypted, or manual)")
+    print("  2. Install systemd services for dkapp-db and dkapp")
+    print("  3. Enable automatic startup on system boot")
+    print()
+    return True
+
+
+def offer_versioning_setup():
+    """Set up version tracking after services are running (automatic, no prompt)"""
+    print()
+    print(f"{Colors.BOLD}Version Management Setup{Colors.ENDC}")
+    print_info("Setting up version management:")
+    print("  - Pins Docker images to specific versions")
+    print("  - Enables reproducible deployments")
+    print("  - Supports easy rollback if updates cause issues")
+    print()
+    print_warning("NOTE: AWS CLI must be configured to fetch latest ECR image tags.")
+    print_warning("      Run 'aws configure' if you haven't set up AWS credentials.")
+    print()
+
+    # Check if already configured
+    if os.path.exists('version-manifest.yaml'):
+        print_success("Version management is already configured")
+        return True
+
+    print_info("Installing version management...")
+    try:
+        if run_command("make migrate-versions", check=False):
+            print_success("Version management configured!")
+            print_info("Your images are now pinned to specific versions.")
+            return True
+        else:
+            print_warning("Failed to set up version management")
+            print_info("This may be due to AWS CLI not being configured.")
+            print_info("You can try later with: make setup-versioning")
+            return False
+    except Exception as e:
+        print_warning(f"Could not set up version management: {e}")
+        print_info("You can try later with: make setup-versioning")
+        return False
 
 def main():
     """Main installation workflow"""
@@ -916,7 +1018,17 @@ def main():
         if not run_make_up(use_sg):
             print_error("Application startup failed")
             sys.exit(1)
-        
+
+        # Offer optional post-installation setup
+        print()
+        print_header("Optional Features Setup")
+        print_info("These features are optional but recommended for production use.")
+        print()
+
+        offer_log_rotation_setup()
+        offer_autorestart_setup()
+        offer_versioning_setup()
+
         # Success!
         print_final_message(dagknows_url, use_sg)
         

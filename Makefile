@@ -10,6 +10,7 @@ DBLOG_PID_FILE=./dblogs/.capture.pid
 .PHONY: dblogs dblogs-start dblogs-stop dblogs-today dblogs-errors dblogs-service dblogs-search dblogs-rotate dblogs-status dblogs-clean dblogs-cron-install dblogs-cron-remove dblogdirs
 .PHONY: version version-history version-pull version-set rollback rollback-service rollback-to update-safe check-updates ecr-login migrate-versions
 .PHONY: setup-autorestart disable-autorestart autorestart-status
+.PHONY: setup-log-rotation setup-versioning
 .PHONY: start stop restart update
 
 encrypt:
@@ -393,6 +394,10 @@ help:
 	@echo "  make disable-autorestart - Disable auto-start and remove services"
 	@echo "  make autorestart-status  - Check auto-restart configuration"
 	@echo ""
+	@echo "Optional Setup Commands:"
+	@echo "  make setup-log-rotation  - Setup daily log rotation (app + DB)"
+	@echo "  make setup-versioning    - Setup version tracking"
+	@echo ""
 	@echo "Legacy Commands (manual passphrase entry):"
 	@echo "  make updb         - Start databases only (prompts for passphrase)"
 	@echo "  make up           - Start app services only (prompts for passphrase)"
@@ -586,6 +591,18 @@ autorestart-status:
 	else \
 		echo "  Not present (manual password entry required)"; \
 	fi
+
+# ==============================================
+# STANDALONE SETUP SCRIPTS (for partial upgrades)
+# ==============================================
+
+# Interactive log rotation setup script (for both app and DB logs)
+setup-log-rotation:
+	@bash setup-log-rotation.sh
+
+# Interactive versioning setup script
+setup-versioning:
+	@bash setup-versioning.sh
 
 # ==============================================
 # SMART START/STOP/RESTART (Auto-detects mode)
