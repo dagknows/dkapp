@@ -68,9 +68,9 @@ if ! docker compose -f "$DKAPP_DIR/$COMPOSE_FILE" up -d; then
     exit 1
 fi
 
-# Wait for containers to stabilize before starting log capture
+# Wait for containers to stabilize before starting log capture (15s to ensure all services are ready)
 log "Waiting for containers to stabilize..."
-sleep 3
+sleep 15
 
 # Start background log capture
 LOG_CAPTURE_DIR="$DKAPP_DIR/logs"
@@ -91,8 +91,17 @@ if [ "$COMPOSE_FILE" = "db-docker-compose.yml" ]; then
     if [ ! -f "$DBLOG_PID_FILE" ] || ! kill -0 $(cat "$DBLOG_PID_FILE") 2>/dev/null; then
         log "Starting background database log capture"
         nohup docker compose -f "$DKAPP_DIR/db-docker-compose.yml" logs -f >> "$DBLOG_CAPTURE_DIR/$(date +%Y-%m-%d).log" 2>&1 &
-        echo $! > "$DBLOG_PID_FILE"
-        log "Database log capture started (PID: $!)"
+        LOG_PID=$!
+        echo $LOG_PID > "$DBLOG_PID_FILE"
+
+        # Verify log capture process is still running after a brief delay
+        sleep 1
+        if kill -0 $LOG_PID 2>/dev/null; then
+            log "Database log capture started (PID: $LOG_PID)"
+        else
+            log "Warning: Database log capture process exited immediately - containers may still be initializing"
+            rm -f "$DBLOG_PID_FILE"
+        fi
     else
         log "Database log capture already running (PID: $(cat "$DBLOG_PID_FILE"))"
     fi
@@ -102,8 +111,17 @@ elif [ "$COMPOSE_FILE" = "docker-compose.yml" ]; then
     if [ ! -f "$LOG_PID_FILE" ] || ! kill -0 $(cat "$LOG_PID_FILE") 2>/dev/null; then
         log "Starting background application log capture"
         nohup docker compose -f "$DKAPP_DIR/docker-compose.yml" logs -f >> "$LOG_CAPTURE_DIR/$(date +%Y-%m-%d).log" 2>&1 &
-        echo $! > "$LOG_PID_FILE"
-        log "Application log capture started (PID: $!)"
+        LOG_PID=$!
+        echo $LOG_PID > "$LOG_PID_FILE"
+
+        # Verify log capture process is still running after a brief delay
+        sleep 1
+        if kill -0 $LOG_PID 2>/dev/null; then
+            log "Application log capture started (PID: $LOG_PID)"
+        else
+            log "Warning: Application log capture process exited immediately - containers may still be initializing"
+            rm -f "$LOG_PID_FILE"
+        fi
     else
         log "Application log capture already running (PID: $(cat "$LOG_PID_FILE"))"
     fi

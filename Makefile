@@ -216,7 +216,7 @@ up: ensurenetworks logdirs
 	else \
 		docker compose -f docker-compose.yml up -d; \
 	fi
-	sleep 5
+	sleep 15
 	rm -f .env
 	@echo "Starting background log capture..."
 	@$(MAKE) logs-start
