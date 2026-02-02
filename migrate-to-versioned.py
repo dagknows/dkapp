@@ -558,7 +558,7 @@ def migrate():
             print_info("If resolution failed, these will be tracked as 'latest' in the manifest.")
             print_info("You can update to specific versions later using: make version-pull TAG=1.35")
 
-    if not confirm("\nCreate manifest from detected images?"):
+    if not confirm("\nCreate manifest from detected images?", default=True):
         print("Migration cancelled.")
         return False
 
