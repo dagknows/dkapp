@@ -419,18 +419,17 @@ def configure_env(resume=False):
         print_error("Passwords do not match!")
         return configure_env()
     
-    config['SUPER_USER_ORG'] = prompt_for_value("Super User Organization", 
+    config['SUPER_USER_ORG'] = prompt_for_value("Super User Organization",
                                                  "default_org", required=True)
     config['DEFAULT_ORG'] = config['SUPER_USER_ORG']  # Make it the same
-    
+
     print(f"\n{Colors.BOLD}4. Mail Configuration{Colors.ENDC}")
     print_info("Leave blank if you don't want to configure email now")
-    config['MAIL_DEFAULT_SENDER'] = prompt_for_value("Mail Default Sender", 
-                                                       "info@dagknows.com", required=False)
+    config['MAIL_DEFAULT_SENDER'] = prompt_for_value("Mail Default Sender", "info@dagknows.com", required=False)
     config['MAIL_USERNAME'] = prompt_for_value("Mail Username", required=False)
     config['MAIL_SERVER'] = prompt_for_value("Mail Server (e.g., smtp.gmail.com)", required=False)
     config['MAIL_PASSWORD'] = prompt_for_value("Mail Password", required=False, is_password=True)
-    
+
     print(f"\n{Colors.BOLD}5. OpenAI Configuration{Colors.ENDC}")
     print_info("Leave blank if you don't want to configure OpenAI now")
     config['OPENAI_API_KEY'] = prompt_for_value("OpenAI API Key", required=False, is_password=True)
@@ -677,20 +676,7 @@ def run_make_up(use_sg=False):
         # Start services
         subprocess.run(cmd, shell=True, check=True)
         print_success("Application services started")
-        
-        print_info("\nStarting application logs...")
-        print_info("Press Ctrl+C to stop viewing logs\n")
-        time.sleep(2)
-        
-        # Show logs
-        try:
-            if use_sg:
-                subprocess.run("sg docker -c 'make logs'", shell=True, check=False)
-            else:
-                subprocess.run("make logs", shell=True, check=False)
-        except KeyboardInterrupt:
-            print_info("\nLogs stopped by user")
-        
+        print_info("View logs anytime with: make logs")
         return True
     except subprocess.CalledProcessError:
         print_error("Failed to start application services")
@@ -707,13 +693,13 @@ def run_make_up(use_sg=False):
 def print_final_message(dagknows_url, used_sg=False):
     """Print final success message with access instructions"""
     print_header("Installation Complete!")
-    
+
     print_success("DagKnows has been successfully installed!")
     print()
     print(f"{Colors.BOLD}Access your DagKnows instance at:{Colors.ENDC}")
     print(f"{Colors.OKCYAN}{Colors.BOLD}  {dagknows_url}{Colors.ENDC}")
     print()
-    
+
     if used_sg:
         print(f"{Colors.WARNING}{Colors.BOLD}⚠ IMPORTANT - Docker Group Activation:{Colors.ENDC}")
         print(f"{Colors.WARNING}The installation used 'sg docker' to run Docker commands.{Colors.ENDC}")
@@ -729,7 +715,7 @@ def print_final_message(dagknows_url, used_sg=False):
         print(f"{Colors.BOLD}Option 3: Prefix each command{Colors.ENDC}")
         print(f"  {Colors.OKCYAN}sg docker -c 'make logs'{Colors.ENDC}")
         print()
-    
+
     print(f"{Colors.BOLD}Useful commands:{Colors.ENDC}")
     print(f"  {Colors.OKBLUE}make logs{Colors.ENDC}        - View application logs")
     print(f"  {Colors.OKBLUE}make dblogs{Colors.ENDC}      - View database logs")
@@ -739,8 +725,142 @@ def print_final_message(dagknows_url, used_sg=False):
     print(f"  {Colors.OKBLUE}make restart{Colors.ENDC}     - Restart all services")
     print(f"  {Colors.OKBLUE}make status{Colors.ENDC}      - Check system status")
     print()
+    print(f"{Colors.BOLD}Optional Setup Commands:{Colors.ENDC}")
+    print(f"  {Colors.OKBLUE}make setup-autorestart{Colors.ENDC}   - Auto-start on system reboot")
+    print(f"  {Colors.OKBLUE}make setup-log-rotation{Colors.ENDC}  - Daily log rotation")
+    print(f"  {Colors.OKBLUE}make setup-versioning{Colors.ENDC}    - Enable version tracking")
+    print()
     print(f"{Colors.WARNING}Note: Some commands will prompt for your encryption password{Colors.ENDC}")
     print()
+
+
+def offer_log_rotation_setup():
+    """Set up log rotation after services are running (automatic, no prompt)"""
+    print()
+    print(f"{Colors.BOLD}Log Rotation Setup{Colors.ENDC}")
+    print_info("Setting up automatic log rotation:")
+    print("  - Compresses logs older than 3 days")
+    print("  - Deletes logs older than 7 days")
+    print("  - Runs daily at midnight via cron")
+    print("  - Applies to BOTH application and database logs")
+    print()
+
+    # Check if already configured
+    try:
+        result = run_command("crontab -l 2>/dev/null | grep -q 'dkapp.*logs-rotate'", check=False)
+        if result:
+            print_success("Log rotation is already configured")
+            return True
+    except Exception:
+        pass
+
+    print_info("Installing log rotation cron jobs...")
+    try:
+        app_result = run_command("make logs-cron-install", check=False)
+        db_result = run_command("make dblogs-cron-install", check=False)
+
+        if app_result and db_result:
+            print_success("Log rotation cron jobs installed!")
+            return True
+        else:
+            print_warning("Failed to install cron jobs")
+            print_info("You can try later with: make setup-log-rotation")
+            return False
+    except Exception as e:
+        print_warning(f"Could not set up log rotation: {e}")
+        print_info("You can try later with: make setup-log-rotation")
+        return False
+
+
+def offer_autorestart_setup(use_sg=False):
+    """Set up auto-restart (requires sudo, runs interactively)"""
+    print()
+    print(f"{Colors.BOLD}Auto-Restart Setup{Colors.ENDC}")
+    print_info("Auto-restart ensures services start automatically after system reboot.")
+    print()
+
+    # Check if already configured
+    if os.path.exists('/etc/systemd/system/dkapp-db.service'):
+        print_success("Auto-restart is already configured")
+        return True
+
+    print_info("Setting up auto-restart...")
+    print_info("You will be prompted for passphrase handling options.")
+    print()
+    try:
+        # Run the setup script interactively
+        subprocess.run("make setup-autorestart", shell=True, check=False)
+        if os.path.exists('/etc/systemd/system/dkapp-db.service'):
+            print_success("Auto-restart configured successfully!")
+
+            # Restart services through systemd so it's managing them
+            print_info("Restarting services through systemd...")
+            stop_cmd = "sg docker -c 'make stop'" if use_sg else "make stop"
+            start_cmd = "sg docker -c 'make start'" if use_sg else "make start"
+
+            run_command(stop_cmd, check=False)
+            if run_command(start_cmd, check=False):
+                print_success("Services now managed by systemd")
+                # Wait for containers to fully initialize
+                print_info("Waiting for containers to fully initialize...")
+                time.sleep(30)
+                print_success("Containers should be ready now")
+            else:
+                print_warning("Could not restart through systemd")
+                print_info("Run 'make start' to start services via systemd")
+            return True
+        else:
+            print_warning("Auto-restart setup may not have completed")
+            print_info("You can try again with: make setup-autorestart")
+            return False
+    except Exception as e:
+        print_warning(f"Could not set up auto-restart: {e}")
+        print_info("You can try later with: make setup-autorestart")
+        return False
+
+
+def offer_versioning_setup(use_sg=False):
+    """Set up version tracking after services are running (automatic, no prompt)"""
+    print()
+    print(f"{Colors.BOLD}Version Management Setup{Colors.ENDC}")
+    print_info("Setting up version management:")
+    print("  - Pins Docker images to specific versions")
+    print("  - Enables reproducible deployments")
+    print("  - Supports easy rollback if updates cause issues")
+    print()
+    print_warning("NOTE: AWS CLI must be configured to fetch latest ECR image tags.")
+    print_warning("      Run 'aws configure' if you haven't set up AWS credentials.")
+    print()
+
+    # Check if already configured
+    if os.path.exists('version-manifest.yaml'):
+        print_success("Version management is already configured")
+        return True
+
+    print_info("Installing version management...")
+    try:
+        if run_command("make migrate-versions", check=False):
+            print_success("Version management configured!")
+            print_info("Your images are now pinned to specific versions.")
+
+            # Restart services to pick up the new versions.env
+            print_info("Restarting services to apply version pinning...")
+            restart_cmd = "sg docker -c 'make restart'" if use_sg else "make restart"
+            if run_command(restart_cmd, check=False):
+                print_success("Services restarted with pinned versions")
+            else:
+                print_warning("Could not restart services automatically")
+                print_info("Run 'make restart' to apply version pinning")
+            return True
+        else:
+            print_warning("Failed to set up version management")
+            print_info("This may be due to AWS CLI not being configured.")
+            print_info("You can try later with: make setup-versioning")
+            return False
+    except Exception as e:
+        print_warning(f"Could not set up version management: {e}")
+        print_info("You can try later with: make setup-versioning")
+        return False
 
 def main():
     """Main installation workflow"""
@@ -837,19 +957,6 @@ def main():
             os.remove('.env')
             print_info("Removed old .env file")
     
-    # Confirmation for fresh install
-    print_warning("This script will:")
-    print("  1. Update your system packages")
-    print("  2. Install required dependencies (make, docker, etc.)")
-    print("  3. Configure your DagKnows installation")
-    print("  4. Start the application services")
-    print()
-    
-    response = input(f"{Colors.BOLD}Do you want to continue? (yes/no): {Colors.ENDC}").strip().lower()
-    if response not in ['yes', 'y']:
-        print_info("Installation cancelled by user")
-        sys.exit(0)
-    
     try:
         # Pre-flight checks
         check_os()
@@ -916,7 +1023,17 @@ def main():
         if not run_make_up(use_sg):
             print_error("Application startup failed")
             sys.exit(1)
-        
+
+        # Offer optional post-installation setup
+        print()
+        print_header("Optional Features Setup")
+        print_info("These features are optional but recommended for production use.")
+        print()
+
+        offer_log_rotation_setup()
+        offer_autorestart_setup(use_sg)
+        offer_versioning_setup(use_sg)
+
         # Success!
         print_final_message(dagknows_url, use_sg)
         

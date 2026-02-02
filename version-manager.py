@@ -154,6 +154,64 @@ def confirm(prompt: str, default: bool = False) -> bool:
 
 
 # ============================================
+# DOCKER ACCESS AND SG DOCKER WRAPPER
+# ============================================
+
+# Global flag to track if we need sg docker wrapper
+USE_SG_DOCKER = False
+
+
+def check_docker_access() -> bool:
+    """
+    Check if Docker is accessible. Automatically tries sg docker if needed.
+    Sets global USE_SG_DOCKER flag for other functions to use.
+    Returns True if Docker is accessible (directly or via sg), False otherwise.
+    """
+    global USE_SG_DOCKER
+
+    # First check if Docker daemon is running (doesn't require docker group)
+    daemon_running, _ = run_command(
+        "systemctl is-active docker 2>/dev/null || pgrep -x dockerd > /dev/null"
+    )
+
+    # Check if user can access Docker directly
+    can_access, _ = run_command("docker ps 2>&1")
+
+    if can_access:
+        USE_SG_DOCKER = False
+        return True
+
+    if daemon_running:
+        # Docker is running but user can't access - try sg docker
+        can_access_sg, _ = run_command("sg docker -c 'docker ps' 2>&1")
+        if can_access_sg:
+            USE_SG_DOCKER = True
+            print_info("Using 'sg docker' for Docker commands (docker group not active in session)")
+            return True
+        else:
+            # Even sg docker didn't work
+            print_error("Docker is running but you don't have permission to access it")
+            print_info("Make sure your user is in the docker group: sudo usermod -aG docker $USER")
+            print_info("Then log out and back in, or run: newgrp docker")
+            return False
+    else:
+        # Docker daemon not running
+        print_error("Docker daemon is not running")
+        print_info("Start Docker with: sudo systemctl start docker")
+        return False
+
+
+def docker_command(cmd: str) -> str:
+    """Wrap a docker command with sg docker if needed."""
+    global USE_SG_DOCKER
+    if USE_SG_DOCKER:
+        # Escape single quotes in the command
+        escaped_cmd = cmd.replace("'", "'\\''")
+        return f"sg docker -c '{escaped_cmd}'"
+    return cmd
+
+
+# ============================================
 # DOCKER HELPER FUNCTIONS
 # ============================================
 
@@ -161,13 +219,13 @@ def clear_stale_ecr_credentials(registry: str) -> bool:
     """
     Clear stale Docker credentials for public ECR.
     This is needed when Docker has cached an expired token.
-    
+
     Returns:
         True if logout was attempted, False otherwise
     """
     if 'public.ecr.aws' in registry:
         print_info("Clearing stale Docker credentials for public.ecr.aws...")
-        run_command("docker logout public.ecr.aws 2>&1", capture=False)
+        run_command(docker_command("docker logout public.ecr.aws") + " 2>&1", capture=False)
         return True
     return False
 
@@ -175,20 +233,22 @@ def clear_stale_ecr_credentials(registry: str) -> bool:
 def docker_pull_with_retry(image: str, max_retries: int = 2) -> Tuple[bool, str]:
     """
     Pull a Docker image with automatic retry on expired token errors.
-    
+    Uses sg docker wrapper if needed.
+
     Args:
         image: Full image name (e.g., 'public.ecr.aws/n5k3t9x2/req_router:latest')
         max_retries: Maximum number of retries
-        
+
     Returns:
         Tuple of (success, output)
     """
     for attempt in range(max_retries):
-        success, output = run_command(f"docker pull {image}")
-        
+        cmd = docker_command(f"docker pull {image}")
+        success, output = run_command(cmd)
+
         if success:
             return True, output
-        
+
         # Check if error is due to expired token
         if "authorization token has expired" in output.lower() or "reauthenticate" in output.lower():
             if attempt < max_retries - 1:
@@ -198,16 +258,17 @@ def docker_pull_with_retry(image: str, max_retries: int = 2) -> Tuple[bool, str]
                     clear_stale_ecr_credentials('public.ecr.aws')
                     print_info("Retrying pull...")
                     continue
-        
+
         # For other errors or final attempt, return the error
         return False, output
-    
+
     return False, output
 
 
 # ============================================
 # ECR TAG RESOLUTION (uses AWS CLI, not Docker login)
 # ============================================
+
 
 def check_ecr_access() -> bool:
     """Check if AWS CLI can access ECR Public API"""
@@ -1102,6 +1163,14 @@ Examples:
     os.chdir(script_dir)
 
     vm = VersionManager()
+
+    # Commands that require Docker access
+    docker_commands = {'pull', 'pull-from-manifest', 'pull-latest', 'rollback', 'update-safe'}
+
+    # Check Docker access for commands that need it
+    if args.command in docker_commands:
+        if not check_docker_access():
+            sys.exit(1)
 
     if args.command == 'show':
         vm.show()

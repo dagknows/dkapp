@@ -10,8 +10,7 @@ RemainAfterExit=yes
 WorkingDirectory=/opt/dkapp
 Environment=DKAPP_DIR=/opt/dkapp
 Environment=PASSPHRASE_FILE=/root/.dkapp-passphrase
-# Use - prefix to ignore failure if network already exists
-ExecStartPre=-/usr/bin/docker network create saaslocalnetwork
+# Network is created automatically by Docker Compose with named network config
 ExecStart=/opt/dkapp/dkapp-startup.sh db-docker-compose.yml
 ExecStop=/usr/bin/docker compose -f /opt/dkapp/db-docker-compose.yml down
 TimeoutStartSec=300

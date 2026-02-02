@@ -1,11 +1,12 @@
 networks:
   saaslocalnetwork:
-    external: true
+    name: saaslocalnetwork
+    driver: bridge
 
 services:
   postgres:
     image: postgres:16.5
-    restart: always
+    restart: unless-stopped
     networks:
       - saaslocalnetwork
     environment:
@@ -20,7 +21,7 @@ services:
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.9.2
-    restart: always
+    restart: unless-stopped
     ports:
       - "9200:9200"
     volumes:

@@ -84,28 +84,40 @@ def check_required_files():
 def check_docker():
     """Check Docker installation and status"""
     print_header("Docker Check")
-    
+
     # Check if docker is installed
     success, _ = run_command("docker --version")
-    print_check("Docker installed", success, 
+    print_check("Docker installed", success,
                "Run: sudo apt-get install docker.io" if not success else "")
-    
+
     if not success:
         return False
-    
-    # Check if docker is running
-    success, _ = run_command("docker ps")
-    print_check("Docker running", success,
-               "Run: sudo systemctl start docker" if not success else "")
-    
-    if not success:
+
+    # Check if docker daemon is running (doesn't require docker group permissions)
+    daemon_running, _ = run_command("systemctl is-active docker 2>/dev/null || pgrep -x dockerd > /dev/null")
+
+    # Check if user can access docker
+    can_access, output = run_command("docker ps 2>&1")
+
+    if can_access:
+        print_check("Docker running", True, "")
+    elif daemon_running:
+        # Docker is running but user can't access it - permission issue
+        print_check("Docker running", True, "")
+        print_check("Docker permissions", False,
+                   "Run: newgrp docker (or logout/login to apply docker group)")
         return False
-    
+    else:
+        # Docker daemon not running
+        print_check("Docker running", False,
+                   "Run: sudo systemctl start docker")
+        return False
+
     # Check docker-compose
     success, _ = run_command("docker compose version")
     print_check("Docker Compose installed", success,
                "Run: sudo apt-get install docker-compose-v2" if not success else "")
-    
+
     return success
 
 def check_docker_network():
@@ -371,7 +383,11 @@ def print_summary(checks_passed):
         
         print(f"{Colors.BOLD}Common fixes:{Colors.ENDC}")
         if not checks_passed.get('docker'):
-            print("  - Install/start Docker: sudo systemctl start docker")
+            print("  - If Docker is running but you see permission errors:")
+            print("    Run: newgrp docker (applies docker group to current session)")
+            print("    Or: logout and login again to apply docker group membership")
+            print("  - If Docker daemon is not running:")
+            print("    Run: sudo systemctl start docker")
         if not checks_passed.get('files'):
             print("  - Run the installation wizard: ./install.sh")
         if not checks_passed.get('db_containers'):

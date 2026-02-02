@@ -152,6 +152,60 @@ def restore_backup(filepath: str, backup_path: str):
         shutil.copy(backup_path, filepath)
 
 
+# Global flag to track if we need sg docker wrapper
+USE_SG_DOCKER = False
+
+
+def check_docker_access() -> bool:
+    """
+    Check if Docker is accessible. Automatically tries sg docker if needed.
+    Sets global USE_SG_DOCKER flag for other functions to use.
+    Returns True if Docker is accessible (directly or via sg), False otherwise.
+    """
+    global USE_SG_DOCKER
+
+    # First check if Docker daemon is running (doesn't require docker group)
+    daemon_running, _ = run_command(
+        "systemctl is-active docker 2>/dev/null || pgrep -x dockerd > /dev/null"
+    )
+
+    # Check if user can access Docker directly
+    can_access, _ = run_command("docker ps 2>&1")
+
+    if can_access:
+        USE_SG_DOCKER = False
+        return True
+
+    if daemon_running:
+        # Docker is running but user can't access - try sg docker
+        can_access_sg, _ = run_command("sg docker -c 'docker ps' 2>&1")
+        if can_access_sg:
+            USE_SG_DOCKER = True
+            print_info("Using 'sg docker' for Docker commands (docker group not active in session)")
+            return True
+        else:
+            # Even sg docker didn't work
+            print_error("Docker is running but you don't have permission to access it")
+            print_info("Make sure your user is in the docker group: sudo usermod -aG docker $USER")
+            print_info("Then log out and back in, or run: newgrp docker")
+            return False
+    else:
+        # Docker daemon not running
+        print_error("Docker daemon is not running")
+        print_info("Start Docker with: sudo systemctl start docker")
+        return False
+
+
+def docker_command(cmd: str) -> str:
+    """Wrap a docker command with sg docker if needed."""
+    global USE_SG_DOCKER
+    if USE_SG_DOCKER:
+        # Escape single quotes in the command
+        escaped_cmd = cmd.replace("'", "'\\''")
+        return f"sg docker -c '{escaped_cmd}'"
+    return cmd
+
+
 # ============================================
 # MIGRATION FUNCTIONS
 # ============================================
@@ -245,8 +299,8 @@ def get_running_images() -> Dict:
     """Get currently running container images and their versions"""
     images = {}
 
-    # Try docker compose ps with JSON format
-    success, output = run_command("docker compose ps --format json")
+    # Try docker compose ps with JSON format (use sg docker if needed)
+    success, output = run_command(docker_command("docker compose ps --format json"))
     if not success or not output.strip():
         return images
 
@@ -266,8 +320,8 @@ def get_running_images() -> Dict:
             if not container_id:
                 continue
 
-            # Get image info from docker inspect
-            success, inspect_output = run_command(f"docker inspect {container_id}")
+            # Get image info from docker inspect (use sg docker if needed)
+            success, inspect_output = run_command(docker_command(f"docker inspect {container_id}"))
             if success:
                 inspect_data = json.loads(inspect_output)
                 if inspect_data:
@@ -432,15 +486,20 @@ def verify_config() -> bool:
 def login_to_public_ecr() -> bool:
     """
     Login to public ECR registry for docker commands
-    
+
     Returns:
         True if login successful, False otherwise
     """
-    success, output = run_command(
-        "aws ecr-public get-login-password --region us-east-1 2>/dev/null | "
-        "docker login --username AWS --password-stdin public.ecr.aws 2>&1",
-        timeout=30
-    )
+    global USE_SG_DOCKER
+    if USE_SG_DOCKER:
+        # When using sg docker, we need to wrap the docker login part
+        cmd = ("aws ecr-public get-login-password --region us-east-1 2>/dev/null | "
+               "sg docker -c 'docker login --username AWS --password-stdin public.ecr.aws' 2>&1")
+    else:
+        cmd = ("aws ecr-public get-login-password --region us-east-1 2>/dev/null | "
+               "docker login --username AWS --password-stdin public.ecr.aws 2>&1")
+
+    success, output = run_command(cmd, timeout=30)
     return success and "Login Succeeded" in output
 
 
@@ -488,6 +547,10 @@ def migrate():
     print("It will create a version manifest based on your currently running containers.")
     print()
 
+    # Check Docker access first
+    if not check_docker_access():
+        return False
+
     # Check for AWS CLI (optional)
     aws_available, ecr_accessible = check_aws_cli()
     
@@ -520,12 +583,7 @@ def migrate():
         print_info("To install: pip install awscli  OR  brew install awscli")
         print()
 
-    # Step 1: Confirm
-    if not confirm("This will enable version tracking. Continue?"):
-        print("Migration cancelled.")
-        return False
-
-    # Step 2: Check if already migrated
+    # Step 1: Check if already migrated
     if os.path.exists('version-manifest.yaml'):
         print_warning("version-manifest.yaml already exists!")
         if not confirm("Overwrite existing manifest?"):
@@ -558,17 +616,9 @@ def migrate():
             print_info("If resolution failed, these will be tracked as 'latest' in the manifest.")
             print_info("You can update to specific versions later using: make version-pull TAG=1.35")
 
-    if not confirm("\nCreate manifest from detected images?"):
-        print("Migration cancelled.")
-        return False
-
-    # Step 4: Get optional deployment info
-    print_step("Deployment Information (optional)")
-
-    customer_id = input("Customer ID (press Enter to skip): ").strip()
-    deployment_id = input("Deployment ID (press Enter for auto-generated): ").strip()
-
-    # Step 5: Create manifest
+    # Step 4: Create manifest (skip optional deployment info prompts)
+    customer_id = ""
+    deployment_id = ""
     print_step("Creating version-manifest.yaml...")
 
     manifest = create_manifest_from_current(images, customer_id, deployment_id)

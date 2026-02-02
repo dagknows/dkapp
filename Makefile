@@ -10,6 +10,7 @@ DBLOG_PID_FILE=./dblogs/.capture.pid
 .PHONY: dblogs dblogs-start dblogs-stop dblogs-today dblogs-errors dblogs-service dblogs-search dblogs-rotate dblogs-status dblogs-clean dblogs-cron-install dblogs-cron-remove dblogdirs
 .PHONY: version version-history version-pull version-set rollback rollback-service rollback-to update-safe check-updates ecr-login migrate-versions
 .PHONY: setup-autorestart disable-autorestart autorestart-status
+.PHONY: setup-log-rotation setup-versioning
 .PHONY: start stop restart update
 
 encrypt:
@@ -17,7 +18,7 @@ encrypt:
 	rm -f .env
 
 logs:
-	docker compose logs -f --tail 300
+	@./run-docker.sh docker compose logs -f --tail 300
 
 # Log Management - Capture and filter logs
 logdirs:
@@ -25,20 +26,49 @@ logdirs:
 	@sudo chown -R $$(id -u):$$(id -g) $(LOG_DIR) 2>/dev/null || true
 
 logs-start: logdirs
-	@if [ -f $(LOG_PID_FILE) ] && kill -0 $$(cat $(LOG_PID_FILE)) 2>/dev/null; then \
+	@if [ -f $(LOG_PID_FILE) ] && ps -p $$(cat $(LOG_PID_FILE)) > /dev/null 2>&1; then \
 		echo "Log capture already running (PID: $$(cat $(LOG_PID_FILE)))"; \
 	else \
 		echo "Starting background log capture to $(LOG_DIR)/$$(date +%Y-%m-%d).log"; \
-		nohup docker compose logs -f >> $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
-		echo $$! > $(LOG_PID_FILE); \
-		echo "Log capture started (PID: $$!)"; \
+		if docker ps >/dev/null 2>&1; then \
+			nohup docker compose logs -f >> $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
+		elif sg docker -c 'docker ps' >/dev/null 2>&1; then \
+			nohup sg docker -c 'docker compose logs -f' >> $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
+		else \
+			echo "ERROR: Cannot access Docker. Run 'newgrp docker' or logout/login."; \
+			exit 1; \
+		fi; \
+		PID=$$!; \
+		echo $$PID > $(LOG_PID_FILE); \
+		sleep 1; \
+		if ps -p $$PID > /dev/null 2>&1; then \
+			echo "Log capture started (PID: $$PID)"; \
+		else \
+			echo "Warning: Log capture process exited immediately"; \
+			echo "  This may happen if no containers are running yet."; \
+			rm -f $(LOG_PID_FILE); \
+		fi; \
 	fi
 
 logs-stop:
-	@if [ -f $(LOG_PID_FILE) ] && kill -0 $$(cat $(LOG_PID_FILE)) 2>/dev/null; then \
-		kill $$(cat $(LOG_PID_FILE)) && rm -f $(LOG_PID_FILE) && echo "Log capture stopped"; \
+	@if [ -f $(LOG_PID_FILE) ]; then \
+		PID=$$(cat $(LOG_PID_FILE)); \
+		if ps -p $$PID > /dev/null 2>&1; then \
+			if kill $$PID 2>/dev/null; then \
+				rm -f $(LOG_PID_FILE); \
+				echo "Log capture stopped (PID: $$PID)"; \
+			elif sudo -n kill $$PID 2>/dev/null; then \
+				sudo -n rm -f $(LOG_PID_FILE) 2>/dev/null || rm -f $(LOG_PID_FILE) 2>/dev/null || true; \
+				echo "Log capture stopped (PID: $$PID, required sudo)"; \
+			else \
+				echo "Warning: Could not stop log capture (PID: $$PID)"; \
+				echo "  Process is owned by root. Try: sudo kill $$PID"; \
+			fi; \
+		else \
+			rm -f $(LOG_PID_FILE) 2>/dev/null || sudo -n rm -f $(LOG_PID_FILE) 2>/dev/null || true; \
+			echo "No log capture process running (stale PID file removed)"; \
+		fi; \
 	else \
-		rm -f $(LOG_PID_FILE); \
 		echo "No log capture process running"; \
 	fi
 
@@ -98,20 +128,49 @@ dblogdirs:
 	@sudo chown -R $$(id -u):$$(id -g) $(DBLOG_DIR) 2>/dev/null || true
 
 dblogs-start: dblogdirs
-	@if [ -f $(DBLOG_PID_FILE) ] && kill -0 $$(cat $(DBLOG_PID_FILE)) 2>/dev/null; then \
+	@if [ -f $(DBLOG_PID_FILE) ] && ps -p $$(cat $(DBLOG_PID_FILE)) > /dev/null 2>&1; then \
 		echo "DB log capture already running (PID: $$(cat $(DBLOG_PID_FILE)))"; \
 	else \
 		echo "Starting background DB log capture to $(DBLOG_DIR)/$$(date +%Y-%m-%d).log"; \
-		nohup docker compose -f db-docker-compose.yml logs -f >> $(DBLOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
-		echo $$! > $(DBLOG_PID_FILE); \
-		echo "DB log capture started (PID: $$!)"; \
+		if docker ps >/dev/null 2>&1; then \
+			nohup docker compose -f db-docker-compose.yml logs -f >> $(DBLOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
+		elif sg docker -c 'docker ps' >/dev/null 2>&1; then \
+			nohup sg docker -c 'docker compose -f db-docker-compose.yml logs -f' >> $(DBLOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
+		else \
+			echo "ERROR: Cannot access Docker. Run 'newgrp docker' or logout/login."; \
+			exit 1; \
+		fi; \
+		PID=$$!; \
+		echo $$PID > $(DBLOG_PID_FILE); \
+		sleep 1; \
+		if ps -p $$PID > /dev/null 2>&1; then \
+			echo "DB log capture started (PID: $$PID)"; \
+		else \
+			echo "Warning: DB log capture process exited immediately"; \
+			echo "  This may happen if no containers are running yet."; \
+			rm -f $(DBLOG_PID_FILE); \
+		fi; \
 	fi
 
 dblogs-stop:
-	@if [ -f $(DBLOG_PID_FILE) ] && kill -0 $$(cat $(DBLOG_PID_FILE)) 2>/dev/null; then \
-		kill $$(cat $(DBLOG_PID_FILE)) && rm -f $(DBLOG_PID_FILE) && echo "DB log capture stopped"; \
+	@if [ -f $(DBLOG_PID_FILE) ]; then \
+		PID=$$(cat $(DBLOG_PID_FILE)); \
+		if ps -p $$PID > /dev/null 2>&1; then \
+			if kill $$PID 2>/dev/null; then \
+				rm -f $(DBLOG_PID_FILE); \
+				echo "DB log capture stopped (PID: $$PID)"; \
+			elif sudo -n kill $$PID 2>/dev/null; then \
+				sudo -n rm -f $(DBLOG_PID_FILE) 2>/dev/null || rm -f $(DBLOG_PID_FILE) 2>/dev/null || true; \
+				echo "DB log capture stopped (PID: $$PID, required sudo)"; \
+			else \
+				echo "Warning: Could not stop DB log capture (PID: $$PID)"; \
+				echo "  Process is owned by root. Try: sudo kill $$PID"; \
+			fi; \
+		else \
+			rm -f $(DBLOG_PID_FILE) 2>/dev/null || sudo -n rm -f $(DBLOG_PID_FILE) 2>/dev/null || true; \
+			echo "No DB log capture process running (stale PID file removed)"; \
+		fi; \
 	else \
-		rm -f $(DBLOG_PID_FILE); \
 		echo "No DB log capture process running"; \
 	fi
 
@@ -185,19 +244,19 @@ p2:
 
 build: down
 	gpg -o .env -d .env.gpg
-	docker compose build --no-cache
+	@./run-docker.sh docker compose build --no-cache
 	sleep 5
 	rm -f .env
 
 
 dblogs:
-	docker compose -f db-docker-compose.yml logs -f --tail 100
+	@./run-docker.sh docker compose -f db-docker-compose.yml logs -f --tail 100
 
-restart: down updb up
+# Legacy restart removed - use 'make restart' which uses smart start/stop
 
 down: logs-stop dblogs-stop
-	docker compose -f docker-compose.yml down --remove-orphans
-	docker compose -f db-docker-compose.yml down --remove-orphans
+	@./run-docker.sh docker compose -f docker-compose.yml down --remove-orphans
+	@./run-docker.sh docker compose -f db-docker-compose.yml down --remove-orphans
 
 # Legacy update (use 'make update' instead for smart restart)
 update-build: down pull build
@@ -212,18 +271,19 @@ up: ensurenetworks logdirs
 	@# Start services with version env if available
 	@if [ -f "versions.env" ]; then \
 		set -a && . ./versions.env && set +a && \
-		docker compose -f docker-compose.yml up -d; \
+		./run-docker.sh docker compose -f docker-compose.yml up -d; \
 	else \
-		docker compose -f docker-compose.yml up -d; \
+		./run-docker.sh docker compose -f docker-compose.yml up -d; \
 	fi
-	sleep 5
+	sleep 15
 	rm -f .env
 	@echo "Starting background log capture..."
 	@$(MAKE) logs-start
 
 
 ensurenetworks:
-	-@docker network create saaslocalnetwork
+	@# Network is created automatically by Docker Compose with named network config
+	@true
 
 pull:
 	@# Pull images from manifest if available, otherwise pull latest
@@ -259,13 +319,13 @@ pull-latest:
 
 updb: dbdirs ensurenetworks dblogdirs
 	gpg -o .env -d .env.gpg
-	docker compose -f db-docker-compose.yml down --remove-orphans
-	docker compose -f db-docker-compose.yml up -d
+	@./run-docker.sh docker compose -f db-docker-compose.yml down --remove-orphans
+	@./run-docker.sh docker compose -f db-docker-compose.yml up -d
 	@echo "Waiting for databases to be healthy..."
 	@sleep 5
 	@echo "  Postgres: checking pg_isready..."
 	@i=0; while [ $$i -lt 30 ]; do \
-		if docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
+		if ./run-docker.sh docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
 			echo "  Postgres: ready"; \
 			break; \
 		fi; \
@@ -391,6 +451,10 @@ help:
 	@echo "  make setup-autorestart   - Setup auto-start on system reboot"
 	@echo "  make disable-autorestart - Disable auto-start and remove services"
 	@echo "  make autorestart-status  - Check auto-restart configuration"
+	@echo ""
+	@echo "Optional Setup Commands:"
+	@echo "  make setup-log-rotation  - Setup daily log rotation (app + DB)"
+	@echo "  make setup-versioning    - Setup version tracking"
 	@echo ""
 	@echo "Legacy Commands (manual passphrase entry):"
 	@echo "  make updb         - Start databases only (prompts for passphrase)"
@@ -545,12 +609,16 @@ setup-autorestart:
 # Disable automatic restart
 disable-autorestart:
 	@echo "Disabling automatic restart..."
-	@sudo systemctl disable dkapp-db.service dkapp.service 2>/dev/null || true
+	@echo "Stopping containers to prevent restart on reboot..."
 	@sudo systemctl stop dkapp-db.service dkapp.service 2>/dev/null || true
+	@./run-docker.sh docker compose -f docker-compose.yml down 2>/dev/null || true
+	@./run-docker.sh docker compose -f db-docker-compose.yml down 2>/dev/null || true
+	@sudo systemctl disable dkapp-db.service dkapp.service 2>/dev/null || true
 	@sudo rm -f /etc/systemd/system/dkapp-db.service /etc/systemd/system/dkapp.service
 	@sudo rm -f /root/.dkapp-passphrase
 	@sudo systemctl daemon-reload
-	@echo "Auto-restart disabled. Services removed."
+	@echo "Auto-restart disabled and containers stopped."
+	@echo "Use 'make start' to start containers again."
 
 # Check auto-restart status
 autorestart-status:
@@ -583,6 +651,18 @@ autorestart-status:
 	fi
 
 # ==============================================
+# STANDALONE SETUP SCRIPTS (for partial upgrades)
+# ==============================================
+
+# Interactive log rotation setup script (for both app and DB logs)
+setup-log-rotation:
+	@bash setup-log-rotation.sh
+
+# Interactive versioning setup script
+setup-versioning:
+	@bash setup-versioning.sh
+
+# ==============================================
 # SMART START/STOP/RESTART (Auto-detects mode)
 # ==============================================
 
@@ -608,15 +688,15 @@ start: stop logdirs dblogdirs
 		sudo chmod -R a+rwx postgres-data esdata1 elastic_backup 2>/dev/null || true; \
 		echo ""; \
 		echo "=== Creating Docker network ==="; \
-		docker network create saaslocalnetwork 2>/dev/null || true; \
+		./run-docker.sh docker network create saaslocalnetwork 2>/dev/null || true; \
 		echo ""; \
 		echo "=== Starting database services ==="; \
-		docker compose -f db-docker-compose.yml down --remove-orphans 2>/dev/null || true; \
-		docker compose -f db-docker-compose.yml up -d; \
+		./run-docker.sh docker compose -f db-docker-compose.yml down --remove-orphans 2>/dev/null || true; \
+		./run-docker.sh docker compose -f db-docker-compose.yml up -d; \
 		echo ""; \
 		echo "=== Waiting for PostgreSQL (up to 60s) ==="; \
 		i=0; while [ $$i -lt 30 ]; do \
-			if docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
+			if ./run-docker.sh docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
 				echo "  PostgreSQL: ready"; \
 				break; \
 			fi; \
@@ -654,10 +734,10 @@ start: stop logdirs dblogdirs
 		if [ -f "versions.env" ]; then \
 			echo "  Loading version overrides from versions.env"; \
 			set -a && . ./versions.env && set +a && \
-			docker compose -f docker-compose.yml up -d; \
+			./run-docker.sh docker compose -f docker-compose.yml up -d; \
 		else \
 			echo "  Using default image tags (no versions.env)"; \
-			docker compose -f docker-compose.yml up -d; \
+			./run-docker.sh docker compose -f docker-compose.yml up -d; \
 		fi; \
 		echo ""; \
 		echo "=== Starting background log capture ==="; \
@@ -665,9 +745,88 @@ start: stop logdirs dblogdirs
 		$(MAKE) logs-start; \
 		echo ""; \
 		echo "Services started. Use 'make status' to check."; \
+	elif [ -f .env.gpg ]; then \
+		echo "Starting services (encrypted .env.gpg mode - passphrase required)..."; \
+		echo ""; \
+		echo "=== Decrypting configuration ==="; \
+		gpg -o .env -d .env.gpg; \
+		echo ""; \
+		echo "=== Setting up directories ==="; \
+		mkdir -p postgres-data esdata1 elastic_backup 2>/dev/null || true; \
+		sudo chmod -R a+rwx postgres-data esdata1 elastic_backup 2>/dev/null || true; \
+		echo ""; \
+		echo "=== Creating Docker network ==="; \
+		./run-docker.sh docker network create saaslocalnetwork 2>/dev/null || true; \
+		echo ""; \
+		echo "=== Starting database services ==="; \
+		./run-docker.sh docker compose -f db-docker-compose.yml down --remove-orphans 2>/dev/null || true; \
+		./run-docker.sh docker compose -f db-docker-compose.yml up -d; \
+		echo ""; \
+		echo "=== Waiting for PostgreSQL (up to 60s) ==="; \
+		i=0; while [ $$i -lt 30 ]; do \
+			if ./run-docker.sh docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
+				echo "  PostgreSQL: ready"; \
+				break; \
+			fi; \
+			echo "  Waiting for PostgreSQL... ($$i/30)"; \
+			sleep 2; \
+			i=$$((i + 1)); \
+		done; \
+		if [ $$i -ge 30 ]; then \
+			echo "ERROR: PostgreSQL failed to become ready after 60s"; \
+			rm -f .env; \
+			exit 1; \
+		fi; \
+		echo ""; \
+		echo "=== Waiting for Elasticsearch (up to 120s) ==="; \
+		i=0; while [ $$i -lt 40 ]; do \
+			if curl -sf "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null 2>&1; then \
+				echo "  Elasticsearch: ready"; \
+				break; \
+			fi; \
+			echo "  Waiting for Elasticsearch... ($$i/40)"; \
+			sleep 3; \
+			i=$$((i + 1)); \
+		done; \
+		if [ $$i -ge 40 ]; then \
+			echo "ERROR: Elasticsearch failed to become ready after 120s"; \
+			rm -f .env; \
+			exit 1; \
+		fi; \
+		echo ""; \
+		echo "=== Setting up version management ==="; \
+		if [ -f "version-manifest.yaml" ]; then \
+			echo "  Generating versions.env from manifest..."; \
+			python3 version-manager.py generate-env 2>/dev/null || true; \
+		fi; \
+		echo ""; \
+		echo "=== Starting application services ==="; \
+		if [ -f "versions.env" ]; then \
+			echo "  Loading version overrides from versions.env"; \
+			set -a && . ./versions.env && set +a && \
+			./run-docker.sh docker compose -f docker-compose.yml up -d; \
+		else \
+			echo "  Using default image tags (no versions.env)"; \
+			./run-docker.sh docker compose -f docker-compose.yml up -d; \
+		fi; \
+		echo ""; \
+		echo "=== Cleaning up decrypted config ==="; \
+		rm -f .env; \
+		echo ""; \
+		echo "=== Starting background log capture ==="; \
+		$(MAKE) dblogs-start; \
+		$(MAKE) logs-start; \
+		echo ""; \
+		echo "Services started. Use 'make status' to check."; \
 	else \
-		echo "Starting services (manual mode - passphrase required)..."; \
-		echo "Run: make updb && make up"; \
+		echo "ERROR: No configuration found."; \
+		echo "Expected one of:"; \
+		echo "  - .env.gpg (encrypted config)"; \
+		echo "  - .env (unencrypted config)"; \
+		echo "  - systemd services with passphrase file"; \
+		echo ""; \
+		echo "Run 'make install' to set up DagKnows."; \
+		exit 1; \
 	fi
 
 # Smart stop: stops all services and log capture processes
@@ -677,8 +836,8 @@ stop: logs-stop dblogs-stop
 		sudo systemctl stop dkapp.service 2>/dev/null || true; \
 		sudo systemctl stop dkapp-db.service 2>/dev/null || true; \
 	fi
-	@docker compose down 2>/dev/null || true
-	@docker compose -f db-docker-compose.yml down 2>/dev/null || true
+	@./run-docker.sh docker compose down 2>/dev/null || true
+	@./run-docker.sh docker compose -f db-docker-compose.yml down 2>/dev/null || true
 	@echo "All services stopped."
 
 # Smart restart: stop then start
