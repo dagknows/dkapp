@@ -801,6 +801,10 @@ def offer_autorestart_setup(use_sg=False):
             run_command(stop_cmd, check=False)
             if run_command(start_cmd, check=False):
                 print_success("Services now managed by systemd")
+                # Wait for containers to fully initialize
+                print_info("Waiting for containers to fully initialize...")
+                time.sleep(30)
+                print_success("Containers should be ready now")
             else:
                 print_warning("Could not restart through systemd")
                 print_info("Run 'make start' to start services via systemd")
