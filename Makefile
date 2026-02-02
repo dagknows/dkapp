@@ -36,10 +36,23 @@ logs-start: logdirs
 	fi
 
 logs-stop:
-	@if [ -f $(LOG_PID_FILE) ] && kill -0 $$(cat $(LOG_PID_FILE)) 2>/dev/null; then \
-		kill $$(cat $(LOG_PID_FILE)) && rm -f $(LOG_PID_FILE) && echo "Log capture stopped"; \
+	@if [ -f $(LOG_PID_FILE) ]; then \
+		PID=$$(cat $(LOG_PID_FILE)); \
+		if kill -0 $$PID 2>/dev/null; then \
+			if kill $$PID 2>/dev/null; then \
+				rm -f $(LOG_PID_FILE); \
+				echo "Log capture stopped"; \
+			elif sudo kill $$PID 2>/dev/null; then \
+				sudo rm -f $(LOG_PID_FILE); \
+				echo "Log capture stopped (required sudo)"; \
+			else \
+				echo "Warning: Could not stop log capture process $$PID"; \
+			fi; \
+		else \
+			rm -f $(LOG_PID_FILE) 2>/dev/null || sudo rm -f $(LOG_PID_FILE); \
+			echo "Log capture process not running (cleaned up stale PID file)"; \
+		fi; \
 	else \
-		rm -f $(LOG_PID_FILE); \
 		echo "No log capture process running"; \
 	fi
 
@@ -109,10 +122,23 @@ dblogs-start: dblogdirs
 	fi
 
 dblogs-stop:
-	@if [ -f $(DBLOG_PID_FILE) ] && kill -0 $$(cat $(DBLOG_PID_FILE)) 2>/dev/null; then \
-		kill $$(cat $(DBLOG_PID_FILE)) && rm -f $(DBLOG_PID_FILE) && echo "DB log capture stopped"; \
+	@if [ -f $(DBLOG_PID_FILE) ]; then \
+		PID=$$(cat $(DBLOG_PID_FILE)); \
+		if kill -0 $$PID 2>/dev/null; then \
+			if kill $$PID 2>/dev/null; then \
+				rm -f $(DBLOG_PID_FILE); \
+				echo "DB log capture stopped"; \
+			elif sudo kill $$PID 2>/dev/null; then \
+				sudo rm -f $(DBLOG_PID_FILE); \
+				echo "DB log capture stopped (required sudo)"; \
+			else \
+				echo "Warning: Could not stop DB log capture process $$PID"; \
+			fi; \
+		else \
+			rm -f $(DBLOG_PID_FILE) 2>/dev/null || sudo rm -f $(DBLOG_PID_FILE); \
+			echo "DB log capture process not running (cleaned up stale PID file)"; \
+		fi; \
 	else \
-		rm -f $(DBLOG_PID_FILE); \
 		echo "No DB log capture process running"; \
 	fi
 
