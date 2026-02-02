@@ -521,7 +521,7 @@ def migrate():
         print()
 
     # Step 1: Confirm
-    if not confirm("This will enable version tracking. Continue?"):
+    if not confirm("This will enable version tracking. Continue?", default=True):
         print("Migration cancelled.")
         return False
 
