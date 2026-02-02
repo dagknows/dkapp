@@ -948,19 +948,6 @@ def main():
             os.remove('.env')
             print_info("Removed old .env file")
     
-    # Confirmation for fresh install
-    print_warning("This script will:")
-    print("  1. Update your system packages")
-    print("  2. Install required dependencies (make, docker, etc.)")
-    print("  3. Configure your DagKnows installation")
-    print("  4. Start the application services")
-    print()
-    
-    response = input(f"{Colors.BOLD}Do you want to continue? [Y/n]: {Colors.ENDC}").strip().lower()
-    if response in ['no', 'n']:
-        print_info("Installation cancelled by user")
-        sys.exit(0)
-    
     try:
         # Pre-flight checks
         check_os()
