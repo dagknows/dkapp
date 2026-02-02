@@ -194,7 +194,7 @@ build: down
 dblogs:
 	docker compose -f db-docker-compose.yml logs -f --tail 100
 
-restart: down updb up
+# Legacy restart removed - use 'make restart' which uses smart start/stop
 
 down: logs-stop dblogs-stop
 	docker compose -f docker-compose.yml down --remove-orphans
