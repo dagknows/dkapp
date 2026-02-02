@@ -47,6 +47,12 @@ else
     exit 1
 fi
 
+# Ensure required directories exist with correct permissions (like dbdirs target)
+log "Ensuring required directories and permissions..."
+mkdir -p postgres-data esdata1 elastic_backup 2>/dev/null || true
+mkdir -p tls logs dblogs 2>/dev/null || true
+chmod -R a+rwx postgres-data esdata1 elastic_backup 2>/dev/null || true
+
 # Generate versions.env if version-manifest exists
 if [ -f "$DKAPP_DIR/version-manifest.yaml" ]; then
     python3 "$DKAPP_DIR/version-manager.py" generate-env 2>/dev/null || true
