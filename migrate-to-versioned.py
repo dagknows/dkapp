@@ -520,12 +520,7 @@ def migrate():
         print_info("To install: pip install awscli  OR  brew install awscli")
         print()
 
-    # Step 1: Confirm
-    if not confirm("This will enable version tracking. Continue?", default=True):
-        print("Migration cancelled.")
-        return False
-
-    # Step 2: Check if already migrated
+    # Step 1: Check if already migrated
     if os.path.exists('version-manifest.yaml'):
         print_warning("version-manifest.yaml already exists!")
         if not confirm("Overwrite existing manifest?"):
@@ -557,10 +552,6 @@ def migrate():
             print_info("The migration attempted to resolve actual versions from ECR.")
             print_info("If resolution failed, these will be tracked as 'latest' in the manifest.")
             print_info("You can update to specific versions later using: make version-pull TAG=1.35")
-
-    if not confirm("\nCreate manifest from detected images?", default=True):
-        print("Migration cancelled.")
-        return False
 
     # Step 4: Create manifest (skip optional deployment info prompts)
     customer_id = ""
