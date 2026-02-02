@@ -780,20 +780,9 @@ def offer_autorestart_setup():
         print_success("Auto-restart is already configured")
         return True
 
-    print_info("This will:")
-    print("  1. Prompt for passphrase handling (file, unencrypted, or manual)")
-    print("  2. Install systemd services for dkapp-db and dkapp")
-    print("  3. Enable automatic startup on system boot")
+    print_info("Setting up auto-restart...")
+    print_info("You will be prompted for passphrase handling options.")
     print()
-    print_warning("Note: This requires sudo privileges.")
-    print()
-
-    response = input(f"{Colors.BOLD}Set up auto-restart now? [Y/n]: {Colors.ENDC}").strip().lower()
-    if response in ['no', 'n']:
-        print_info("Skipped. You can set this up later with: make setup-autorestart")
-        return True
-
-    print_info("Running auto-restart setup...")
     try:
         # Run the setup script interactively
         subprocess.run("make setup-autorestart", shell=True, check=False)
