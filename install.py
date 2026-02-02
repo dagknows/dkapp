@@ -768,7 +768,7 @@ def offer_log_rotation_setup():
         return False
 
 
-def offer_autorestart_setup():
+def offer_autorestart_setup(use_sg=False):
     """Set up auto-restart (requires sudo, runs interactively)"""
     print()
     print(f"{Colors.BOLD}Auto-Restart Setup{Colors.ENDC}")
@@ -788,6 +788,18 @@ def offer_autorestart_setup():
         subprocess.run("make setup-autorestart", shell=True, check=False)
         if os.path.exists('/etc/systemd/system/dkapp-db.service'):
             print_success("Auto-restart configured successfully!")
+
+            # Restart services through systemd so it's managing them
+            print_info("Restarting services through systemd...")
+            stop_cmd = "sg docker -c 'make stop'" if use_sg else "make stop"
+            start_cmd = "sg docker -c 'make start'" if use_sg else "make start"
+
+            run_command(stop_cmd, check=False)
+            if run_command(start_cmd, check=False):
+                print_success("Services now managed by systemd")
+            else:
+                print_warning("Could not restart through systemd")
+                print_info("Run 'make start' to start services via systemd")
             return True
         else:
             print_warning("Auto-restart setup may not have completed")
@@ -1011,7 +1023,7 @@ def main():
         print()
 
         offer_log_rotation_setup()
-        offer_autorestart_setup()
+        offer_autorestart_setup(use_sg)
         offer_versioning_setup(use_sg)
 
         # Success!
