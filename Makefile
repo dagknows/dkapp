@@ -18,7 +18,7 @@ encrypt:
 	rm -f .env
 
 logs:
-	docker compose logs -f --tail 300
+	@./run-docker.sh docker compose logs -f --tail 300
 
 # Log Management - Capture and filter logs
 logdirs:
@@ -30,7 +30,14 @@ logs-start: logdirs
 		echo "Log capture already running (PID: $$(cat $(LOG_PID_FILE)))"; \
 	else \
 		echo "Starting background log capture to $(LOG_DIR)/$$(date +%Y-%m-%d).log"; \
-		nohup docker compose logs -f >> $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
+		if docker ps >/dev/null 2>&1; then \
+			nohup docker compose logs -f >> $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
+		elif sg docker -c 'docker ps' >/dev/null 2>&1; then \
+			nohup sg docker -c 'docker compose logs -f' >> $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
+		else \
+			echo "ERROR: Cannot access Docker. Run 'newgrp docker' or logout/login."; \
+			exit 1; \
+		fi; \
 		PID=$$!; \
 		echo $$PID > $(LOG_PID_FILE); \
 		sleep 1; \
@@ -125,7 +132,14 @@ dblogs-start: dblogdirs
 		echo "DB log capture already running (PID: $$(cat $(DBLOG_PID_FILE)))"; \
 	else \
 		echo "Starting background DB log capture to $(DBLOG_DIR)/$$(date +%Y-%m-%d).log"; \
-		nohup docker compose -f db-docker-compose.yml logs -f >> $(DBLOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
+		if docker ps >/dev/null 2>&1; then \
+			nohup docker compose -f db-docker-compose.yml logs -f >> $(DBLOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
+		elif sg docker -c 'docker ps' >/dev/null 2>&1; then \
+			nohup sg docker -c 'docker compose -f db-docker-compose.yml logs -f' >> $(DBLOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
+		else \
+			echo "ERROR: Cannot access Docker. Run 'newgrp docker' or logout/login."; \
+			exit 1; \
+		fi; \
 		PID=$$!; \
 		echo $$PID > $(DBLOG_PID_FILE); \
 		sleep 1; \
@@ -230,19 +244,19 @@ p2:
 
 build: down
 	gpg -o .env -d .env.gpg
-	docker compose build --no-cache
+	@./run-docker.sh docker compose build --no-cache
 	sleep 5
 	rm -f .env
 
 
 dblogs:
-	docker compose -f db-docker-compose.yml logs -f --tail 100
+	@./run-docker.sh docker compose -f db-docker-compose.yml logs -f --tail 100
 
 # Legacy restart removed - use 'make restart' which uses smart start/stop
 
 down: logs-stop dblogs-stop
-	docker compose -f docker-compose.yml down --remove-orphans
-	docker compose -f db-docker-compose.yml down --remove-orphans
+	@./run-docker.sh docker compose -f docker-compose.yml down --remove-orphans
+	@./run-docker.sh docker compose -f db-docker-compose.yml down --remove-orphans
 
 # Legacy update (use 'make update' instead for smart restart)
 update-build: down pull build
@@ -257,9 +271,9 @@ up: ensurenetworks logdirs
 	@# Start services with version env if available
 	@if [ -f "versions.env" ]; then \
 		set -a && . ./versions.env && set +a && \
-		docker compose -f docker-compose.yml up -d; \
+		./run-docker.sh docker compose -f docker-compose.yml up -d; \
 	else \
-		docker compose -f docker-compose.yml up -d; \
+		./run-docker.sh docker compose -f docker-compose.yml up -d; \
 	fi
 	sleep 15
 	rm -f .env
@@ -305,13 +319,13 @@ pull-latest:
 
 updb: dbdirs ensurenetworks dblogdirs
 	gpg -o .env -d .env.gpg
-	docker compose -f db-docker-compose.yml down --remove-orphans
-	docker compose -f db-docker-compose.yml up -d
+	@./run-docker.sh docker compose -f db-docker-compose.yml down --remove-orphans
+	@./run-docker.sh docker compose -f db-docker-compose.yml up -d
 	@echo "Waiting for databases to be healthy..."
 	@sleep 5
 	@echo "  Postgres: checking pg_isready..."
 	@i=0; while [ $$i -lt 30 ]; do \
-		if docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
+		if ./run-docker.sh docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
 			echo "  Postgres: ready"; \
 			break; \
 		fi; \
@@ -597,8 +611,8 @@ disable-autorestart:
 	@echo "Disabling automatic restart..."
 	@echo "Stopping containers to prevent restart on reboot..."
 	@sudo systemctl stop dkapp-db.service dkapp.service 2>/dev/null || true
-	@docker compose -f docker-compose.yml down 2>/dev/null || true
-	@docker compose -f db-docker-compose.yml down 2>/dev/null || true
+	@./run-docker.sh docker compose -f docker-compose.yml down 2>/dev/null || true
+	@./run-docker.sh docker compose -f db-docker-compose.yml down 2>/dev/null || true
 	@sudo systemctl disable dkapp-db.service dkapp.service 2>/dev/null || true
 	@sudo rm -f /etc/systemd/system/dkapp-db.service /etc/systemd/system/dkapp.service
 	@sudo rm -f /root/.dkapp-passphrase
@@ -674,15 +688,15 @@ start: stop logdirs dblogdirs
 		sudo chmod -R a+rwx postgres-data esdata1 elastic_backup 2>/dev/null || true; \
 		echo ""; \
 		echo "=== Creating Docker network ==="; \
-		docker network create saaslocalnetwork 2>/dev/null || true; \
+		./run-docker.sh docker network create saaslocalnetwork 2>/dev/null || true; \
 		echo ""; \
 		echo "=== Starting database services ==="; \
-		docker compose -f db-docker-compose.yml down --remove-orphans 2>/dev/null || true; \
-		docker compose -f db-docker-compose.yml up -d; \
+		./run-docker.sh docker compose -f db-docker-compose.yml down --remove-orphans 2>/dev/null || true; \
+		./run-docker.sh docker compose -f db-docker-compose.yml up -d; \
 		echo ""; \
 		echo "=== Waiting for PostgreSQL (up to 60s) ==="; \
 		i=0; while [ $$i -lt 30 ]; do \
-			if docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
+			if ./run-docker.sh docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
 				echo "  PostgreSQL: ready"; \
 				break; \
 			fi; \
@@ -720,10 +734,10 @@ start: stop logdirs dblogdirs
 		if [ -f "versions.env" ]; then \
 			echo "  Loading version overrides from versions.env"; \
 			set -a && . ./versions.env && set +a && \
-			docker compose -f docker-compose.yml up -d; \
+			./run-docker.sh docker compose -f docker-compose.yml up -d; \
 		else \
 			echo "  Using default image tags (no versions.env)"; \
-			docker compose -f docker-compose.yml up -d; \
+			./run-docker.sh docker compose -f docker-compose.yml up -d; \
 		fi; \
 		echo ""; \
 		echo "=== Starting background log capture ==="; \
@@ -742,15 +756,15 @@ start: stop logdirs dblogdirs
 		sudo chmod -R a+rwx postgres-data esdata1 elastic_backup 2>/dev/null || true; \
 		echo ""; \
 		echo "=== Creating Docker network ==="; \
-		docker network create saaslocalnetwork 2>/dev/null || true; \
+		./run-docker.sh docker network create saaslocalnetwork 2>/dev/null || true; \
 		echo ""; \
 		echo "=== Starting database services ==="; \
-		docker compose -f db-docker-compose.yml down --remove-orphans 2>/dev/null || true; \
-		docker compose -f db-docker-compose.yml up -d; \
+		./run-docker.sh docker compose -f db-docker-compose.yml down --remove-orphans 2>/dev/null || true; \
+		./run-docker.sh docker compose -f db-docker-compose.yml up -d; \
 		echo ""; \
 		echo "=== Waiting for PostgreSQL (up to 60s) ==="; \
 		i=0; while [ $$i -lt 30 ]; do \
-			if docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
+			if ./run-docker.sh docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
 				echo "  PostgreSQL: ready"; \
 				break; \
 			fi; \
@@ -790,10 +804,10 @@ start: stop logdirs dblogdirs
 		if [ -f "versions.env" ]; then \
 			echo "  Loading version overrides from versions.env"; \
 			set -a && . ./versions.env && set +a && \
-			docker compose -f docker-compose.yml up -d; \
+			./run-docker.sh docker compose -f docker-compose.yml up -d; \
 		else \
 			echo "  Using default image tags (no versions.env)"; \
-			docker compose -f docker-compose.yml up -d; \
+			./run-docker.sh docker compose -f docker-compose.yml up -d; \
 		fi; \
 		echo ""; \
 		echo "=== Cleaning up decrypted config ==="; \
@@ -822,8 +836,8 @@ stop: logs-stop dblogs-stop
 		sudo systemctl stop dkapp.service 2>/dev/null || true; \
 		sudo systemctl stop dkapp-db.service 2>/dev/null || true; \
 	fi
-	@docker compose down 2>/dev/null || true
-	@docker compose -f db-docker-compose.yml down 2>/dev/null || true
+	@./run-docker.sh docker compose down 2>/dev/null || true
+	@./run-docker.sh docker compose -f db-docker-compose.yml down 2>/dev/null || true
 	@echo "All services stopped."
 
 # Smart restart: stop then start
