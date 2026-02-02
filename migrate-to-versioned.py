@@ -152,45 +152,58 @@ def restore_backup(filepath: str, backup_path: str):
         shutil.copy(backup_path, filepath)
 
 
+# Global flag to track if we need sg docker wrapper
+USE_SG_DOCKER = False
+
+
 def check_docker_access() -> bool:
     """
-    Check if Docker is accessible. Returns True if accessible, False otherwise.
-    Prints helpful error messages if not accessible.
+    Check if Docker is accessible. Automatically tries sg docker if needed.
+    Sets global USE_SG_DOCKER flag for other functions to use.
+    Returns True if Docker is accessible (directly or via sg), False otherwise.
     """
+    global USE_SG_DOCKER
+
     # First check if Docker daemon is running (doesn't require docker group)
     daemon_running, _ = run_command(
         "systemctl is-active docker 2>/dev/null || pgrep -x dockerd > /dev/null"
     )
 
-    # Then check if user can access Docker
-    can_access, output = run_command("docker ps 2>&1")
+    # Check if user can access Docker directly
+    can_access, _ = run_command("docker ps 2>&1")
 
     if can_access:
+        USE_SG_DOCKER = False
         return True
 
     if daemon_running:
-        # Docker is running but user can't access - permission issue
-        print_error("Docker is running but you don't have permission to access it")
-        print()
-        print_info("Your user was added to the docker group, but the group isn't active yet.")
-        print_info("To fix this, choose one of these options:")
-        print()
-        print(f"  {Colors.BOLD}Option 1 (Recommended):{Colors.ENDC} Activate for current session")
-        print(f"    {Colors.OKBLUE}newgrp docker{Colors.ENDC}")
-        print(f"    Then run this command again.")
-        print()
-        print(f"  {Colors.BOLD}Option 2:{Colors.ENDC} Log out and back in")
-        print(f"    The docker group will be active in all new sessions")
-        print()
-        print(f"  {Colors.BOLD}Option 3:{Colors.ENDC} Prefix each command")
-        print(f"    {Colors.OKBLUE}sg docker -c 'make migrate-versions'{Colors.ENDC}")
-        print()
-        return False
+        # Docker is running but user can't access - try sg docker
+        can_access_sg, _ = run_command("sg docker -c 'docker ps' 2>&1")
+        if can_access_sg:
+            USE_SG_DOCKER = True
+            print_info("Using 'sg docker' for Docker commands (docker group not active in session)")
+            return True
+        else:
+            # Even sg docker didn't work
+            print_error("Docker is running but you don't have permission to access it")
+            print_info("Make sure your user is in the docker group: sudo usermod -aG docker $USER")
+            print_info("Then log out and back in, or run: newgrp docker")
+            return False
     else:
         # Docker daemon not running
         print_error("Docker daemon is not running")
         print_info("Start Docker with: sudo systemctl start docker")
         return False
+
+
+def docker_command(cmd: str) -> str:
+    """Wrap a docker command with sg docker if needed."""
+    global USE_SG_DOCKER
+    if USE_SG_DOCKER:
+        # Escape single quotes in the command
+        escaped_cmd = cmd.replace("'", "'\\''")
+        return f"sg docker -c '{escaped_cmd}'"
+    return cmd
 
 
 # ============================================
@@ -286,8 +299,8 @@ def get_running_images() -> Dict:
     """Get currently running container images and their versions"""
     images = {}
 
-    # Try docker compose ps with JSON format
-    success, output = run_command("docker compose ps --format json")
+    # Try docker compose ps with JSON format (use sg docker if needed)
+    success, output = run_command(docker_command("docker compose ps --format json"))
     if not success or not output.strip():
         return images
 
@@ -307,8 +320,8 @@ def get_running_images() -> Dict:
             if not container_id:
                 continue
 
-            # Get image info from docker inspect
-            success, inspect_output = run_command(f"docker inspect {container_id}")
+            # Get image info from docker inspect (use sg docker if needed)
+            success, inspect_output = run_command(docker_command(f"docker inspect {container_id}"))
             if success:
                 inspect_data = json.loads(inspect_output)
                 if inspect_data:
@@ -473,15 +486,20 @@ def verify_config() -> bool:
 def login_to_public_ecr() -> bool:
     """
     Login to public ECR registry for docker commands
-    
+
     Returns:
         True if login successful, False otherwise
     """
-    success, output = run_command(
-        "aws ecr-public get-login-password --region us-east-1 2>/dev/null | "
-        "docker login --username AWS --password-stdin public.ecr.aws 2>&1",
-        timeout=30
-    )
+    global USE_SG_DOCKER
+    if USE_SG_DOCKER:
+        # When using sg docker, we need to wrap the docker login part
+        cmd = ("aws ecr-public get-login-password --region us-east-1 2>/dev/null | "
+               "sg docker -c 'docker login --username AWS --password-stdin public.ecr.aws' 2>&1")
+    else:
+        cmd = ("aws ecr-public get-login-password --region us-east-1 2>/dev/null | "
+               "docker login --username AWS --password-stdin public.ecr.aws 2>&1")
+
+    success, output = run_command(cmd, timeout=30)
     return success and "Login Succeeded" in output
 
 
