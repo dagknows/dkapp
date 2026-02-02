@@ -672,20 +672,7 @@ def run_make_up(use_sg=False):
         # Start services
         subprocess.run(cmd, shell=True, check=True)
         print_success("Application services started")
-        
-        print_info("\nStarting application logs...")
-        print_info("Press Ctrl+C to stop viewing logs\n")
-        time.sleep(2)
-        
-        # Show logs
-        try:
-            if use_sg:
-                subprocess.run("sg docker -c 'make logs'", shell=True, check=False)
-            else:
-                subprocess.run("make logs", shell=True, check=False)
-        except KeyboardInterrupt:
-            print_info("\nLogs stopped by user")
-        
+        print_info("View logs anytime with: make logs")
         return True
     except subprocess.CalledProcessError:
         print_error("Failed to start application services")
