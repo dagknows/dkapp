@@ -562,13 +562,9 @@ def migrate():
         print("Migration cancelled.")
         return False
 
-    # Step 4: Get optional deployment info
-    print_step("Deployment Information (optional)")
-
-    customer_id = input("Customer ID (press Enter to skip): ").strip()
-    deployment_id = input("Deployment ID (press Enter for auto-generated): ").strip()
-
-    # Step 5: Create manifest
+    # Step 4: Create manifest (skip optional deployment info prompts)
+    customer_id = ""
+    deployment_id = ""
     print_step("Creating version-manifest.yaml...")
 
     manifest = create_manifest_from_current(images, customer_id, deployment_id)
