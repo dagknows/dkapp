@@ -231,6 +231,16 @@ rm -rf postgres-data esdata1 elastic_backup
 - Keep your encryption password safe - you'll need it for management commands
 - Use HTTPS in production (configure SSL certificates)
 
+## Documentation
+
+For detailed information on specific features, see these guides:
+
+| Guide | Description |
+|-------|-------------|
+| [LOGGING.md](LOGGING.md) | Log management, rotation, and troubleshooting |
+| [VERSION-MANAGEMENT.md](VERSION-MANAGEMENT.md) | Docker image versioning, updates, and rollback |
+| [AUTORESTART.md](AUTORESTART.md) | Auto-start on system boot with passphrase options |
+
 ## Support
 
 For issues and support, please visit: https://github.com/dagknows/dkapp/issues
