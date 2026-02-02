@@ -687,9 +687,88 @@ start: stop logdirs dblogdirs
 		$(MAKE) logs-start; \
 		echo ""; \
 		echo "Services started. Use 'make status' to check."; \
+	elif [ -f .env.gpg ]; then \
+		echo "Starting services (encrypted .env.gpg mode - passphrase required)..."; \
+		echo ""; \
+		echo "=== Decrypting configuration ==="; \
+		gpg -o .env -d .env.gpg; \
+		echo ""; \
+		echo "=== Setting up directories ==="; \
+		mkdir -p postgres-data esdata1 elastic_backup 2>/dev/null || true; \
+		sudo chmod -R a+rwx postgres-data esdata1 elastic_backup 2>/dev/null || true; \
+		echo ""; \
+		echo "=== Creating Docker network ==="; \
+		docker network create saaslocalnetwork 2>/dev/null || true; \
+		echo ""; \
+		echo "=== Starting database services ==="; \
+		docker compose -f db-docker-compose.yml down --remove-orphans 2>/dev/null || true; \
+		docker compose -f db-docker-compose.yml up -d; \
+		echo ""; \
+		echo "=== Waiting for PostgreSQL (up to 60s) ==="; \
+		i=0; while [ $$i -lt 30 ]; do \
+			if docker compose -f db-docker-compose.yml exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then \
+				echo "  PostgreSQL: ready"; \
+				break; \
+			fi; \
+			echo "  Waiting for PostgreSQL... ($$i/30)"; \
+			sleep 2; \
+			i=$$((i + 1)); \
+		done; \
+		if [ $$i -ge 30 ]; then \
+			echo "ERROR: PostgreSQL failed to become ready after 60s"; \
+			rm -f .env; \
+			exit 1; \
+		fi; \
+		echo ""; \
+		echo "=== Waiting for Elasticsearch (up to 120s) ==="; \
+		i=0; while [ $$i -lt 40 ]; do \
+			if curl -sf "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null 2>&1; then \
+				echo "  Elasticsearch: ready"; \
+				break; \
+			fi; \
+			echo "  Waiting for Elasticsearch... ($$i/40)"; \
+			sleep 3; \
+			i=$$((i + 1)); \
+		done; \
+		if [ $$i -ge 40 ]; then \
+			echo "ERROR: Elasticsearch failed to become ready after 120s"; \
+			rm -f .env; \
+			exit 1; \
+		fi; \
+		echo ""; \
+		echo "=== Setting up version management ==="; \
+		if [ -f "version-manifest.yaml" ]; then \
+			echo "  Generating versions.env from manifest..."; \
+			python3 version-manager.py generate-env 2>/dev/null || true; \
+		fi; \
+		echo ""; \
+		echo "=== Starting application services ==="; \
+		if [ -f "versions.env" ]; then \
+			echo "  Loading version overrides from versions.env"; \
+			set -a && . ./versions.env && set +a && \
+			docker compose -f docker-compose.yml up -d; \
+		else \
+			echo "  Using default image tags (no versions.env)"; \
+			docker compose -f docker-compose.yml up -d; \
+		fi; \
+		echo ""; \
+		echo "=== Cleaning up decrypted config ==="; \
+		rm -f .env; \
+		echo ""; \
+		echo "=== Starting background log capture ==="; \
+		$(MAKE) dblogs-start; \
+		$(MAKE) logs-start; \
+		echo ""; \
+		echo "Services started. Use 'make status' to check."; \
 	else \
-		echo "Starting services (manual mode - passphrase required)..."; \
-		echo "Run: make updb && make up"; \
+		echo "ERROR: No configuration found."; \
+		echo "Expected one of:"; \
+		echo "  - .env.gpg (encrypted config)"; \
+		echo "  - .env (unencrypted config)"; \
+		echo "  - systemd services with passphrase file"; \
+		echo ""; \
+		echo "Run 'make install' to set up DagKnows."; \
+		exit 1; \
 	fi
 
 # Smart stop: stops all services and log capture processes
