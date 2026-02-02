@@ -419,14 +419,18 @@ def configure_env(resume=False):
         print_error("Passwords do not match!")
         return configure_env()
     
-    config['SUPER_USER_ORG'] = prompt_for_value("Super User Organization", 
+    config['SUPER_USER_ORG'] = prompt_for_value("Super User Organization",
                                                  "default_org", required=True)
     config['DEFAULT_ORG'] = config['SUPER_USER_ORG']  # Make it the same
-    
-    # Mail configuration uses defaults - not prompted during install
-    # Can be configured later by editing .env file
 
-    print(f"\n{Colors.BOLD}4. OpenAI Configuration{Colors.ENDC}")
+    print(f"\n{Colors.BOLD}4. Mail Configuration{Colors.ENDC}")
+    print_info("Leave blank if you don't want to configure email now")
+    config['MAIL_DEFAULT_SENDER'] = prompt_for_value("Mail Default Sender", "info@dagknows.com", required=False)
+    config['MAIL_USERNAME'] = prompt_for_value("Mail Username", required=False)
+    config['MAIL_SERVER'] = prompt_for_value("Mail Server (e.g., smtp.gmail.com)", required=False)
+    config['MAIL_PASSWORD'] = prompt_for_value("Mail Password", required=False, is_password=True)
+
+    print(f"\n{Colors.BOLD}5. OpenAI Configuration{Colors.ENDC}")
     print_info("Leave blank if you don't want to configure OpenAI now")
     config['OPENAI_API_KEY'] = prompt_for_value("OpenAI API Key", required=False, is_password=True)
     config['OPENAI_ORG_ID'] = prompt_for_value("OpenAI Organization ID", required=False)
