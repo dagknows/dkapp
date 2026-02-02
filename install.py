@@ -769,11 +769,10 @@ def offer_log_rotation_setup():
 
 
 def offer_autorestart_setup():
-    """Inform about auto-restart setup (requires sudo, not automatic)"""
+    """Set up auto-restart (requires sudo, runs interactively)"""
     print()
     print(f"{Colors.BOLD}Auto-Restart Setup{Colors.ENDC}")
     print_info("Auto-restart ensures services start automatically after system reboot.")
-    print_warning("Note: This requires sudo privileges and GPG passphrase handling.")
     print()
 
     # Check if already configured
@@ -781,15 +780,34 @@ def offer_autorestart_setup():
         print_success("Auto-restart is already configured")
         return True
 
-    print_info("Auto-restart is NOT currently configured.")
-    print_info("To enable, run: make setup-autorestart")
-    print()
     print_info("This will:")
     print("  1. Prompt for passphrase handling (file, unencrypted, or manual)")
     print("  2. Install systemd services for dkapp-db and dkapp")
     print("  3. Enable automatic startup on system boot")
     print()
-    return True
+    print_warning("Note: This requires sudo privileges.")
+    print()
+
+    response = input(f"{Colors.BOLD}Set up auto-restart now? [Y/n]: {Colors.ENDC}").strip().lower()
+    if response in ['no', 'n']:
+        print_info("Skipped. You can set this up later with: make setup-autorestart")
+        return True
+
+    print_info("Running auto-restart setup...")
+    try:
+        # Run the setup script interactively
+        subprocess.run("make setup-autorestart", shell=True, check=False)
+        if os.path.exists('/etc/systemd/system/dkapp-db.service'):
+            print_success("Auto-restart configured successfully!")
+            return True
+        else:
+            print_warning("Auto-restart setup may not have completed")
+            print_info("You can try again with: make setup-autorestart")
+            return False
+    except Exception as e:
+        print_warning(f"Could not set up auto-restart: {e}")
+        print_info("You can try later with: make setup-autorestart")
+        return False
 
 
 def offer_versioning_setup(use_sg=False):
