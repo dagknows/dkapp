@@ -26,29 +26,40 @@ logdirs:
 	@sudo chown -R $$(id -u):$$(id -g) $(LOG_DIR) 2>/dev/null || true
 
 logs-start: logdirs
-	@if [ -f $(LOG_PID_FILE) ] && kill -0 $$(cat $(LOG_PID_FILE)) 2>/dev/null; then \
+	@if [ -f $(LOG_PID_FILE) ] && ps -p $$(cat $(LOG_PID_FILE)) > /dev/null 2>&1; then \
 		echo "Log capture already running (PID: $$(cat $(LOG_PID_FILE)))"; \
 	else \
 		echo "Starting background log capture to $(LOG_DIR)/$$(date +%Y-%m-%d).log"; \
 		nohup docker compose logs -f >> $(LOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
-		echo $$! > $(LOG_PID_FILE); \
-		echo "Log capture started (PID: $$!)"; \
+		PID=$$!; \
+		echo $$PID > $(LOG_PID_FILE); \
+		sleep 1; \
+		if ps -p $$PID > /dev/null 2>&1; then \
+			echo "Log capture started (PID: $$PID)"; \
+		else \
+			echo "Warning: Log capture process exited immediately"; \
+			echo "  This may happen if no containers are running yet."; \
+			rm -f $(LOG_PID_FILE); \
+		fi; \
 	fi
 
 logs-stop:
 	@if [ -f $(LOG_PID_FILE) ]; then \
 		PID=$$(cat $(LOG_PID_FILE)); \
-		if kill -0 $$PID 2>/dev/null; then \
-			kill $$PID 2>/dev/null; \
-			rm -f $(LOG_PID_FILE); \
-			echo "Log capture stopped"; \
-		elif sudo kill -0 $$PID 2>/dev/null; then \
-			sudo kill $$PID 2>/dev/null; \
-			sudo rm -f $(LOG_PID_FILE); \
-			echo "Log capture stopped (required sudo)"; \
+		if ps -p $$PID > /dev/null 2>&1; then \
+			if kill $$PID 2>/dev/null; then \
+				rm -f $(LOG_PID_FILE); \
+				echo "Log capture stopped (PID: $$PID)"; \
+			elif sudo -n kill $$PID 2>/dev/null; then \
+				sudo -n rm -f $(LOG_PID_FILE) 2>/dev/null || rm -f $(LOG_PID_FILE) 2>/dev/null || true; \
+				echo "Log capture stopped (PID: $$PID, required sudo)"; \
+			else \
+				echo "Warning: Could not stop log capture (PID: $$PID)"; \
+				echo "  Process is owned by root. Try: sudo kill $$PID"; \
+			fi; \
 		else \
-			rm -f $(LOG_PID_FILE) 2>/dev/null || sudo rm -f $(LOG_PID_FILE); \
-			echo "Log capture process not running (cleaned up stale PID file)"; \
+			rm -f $(LOG_PID_FILE) 2>/dev/null || sudo -n rm -f $(LOG_PID_FILE) 2>/dev/null || true; \
+			echo "No log capture process running (stale PID file removed)"; \
 		fi; \
 	else \
 		echo "No log capture process running"; \
@@ -110,29 +121,40 @@ dblogdirs:
 	@sudo chown -R $$(id -u):$$(id -g) $(DBLOG_DIR) 2>/dev/null || true
 
 dblogs-start: dblogdirs
-	@if [ -f $(DBLOG_PID_FILE) ] && kill -0 $$(cat $(DBLOG_PID_FILE)) 2>/dev/null; then \
+	@if [ -f $(DBLOG_PID_FILE) ] && ps -p $$(cat $(DBLOG_PID_FILE)) > /dev/null 2>&1; then \
 		echo "DB log capture already running (PID: $$(cat $(DBLOG_PID_FILE)))"; \
 	else \
 		echo "Starting background DB log capture to $(DBLOG_DIR)/$$(date +%Y-%m-%d).log"; \
 		nohup docker compose -f db-docker-compose.yml logs -f >> $(DBLOG_DIR)/$$(date +%Y-%m-%d).log 2>&1 & \
-		echo $$! > $(DBLOG_PID_FILE); \
-		echo "DB log capture started (PID: $$!)"; \
+		PID=$$!; \
+		echo $$PID > $(DBLOG_PID_FILE); \
+		sleep 1; \
+		if ps -p $$PID > /dev/null 2>&1; then \
+			echo "DB log capture started (PID: $$PID)"; \
+		else \
+			echo "Warning: DB log capture process exited immediately"; \
+			echo "  This may happen if no containers are running yet."; \
+			rm -f $(DBLOG_PID_FILE); \
+		fi; \
 	fi
 
 dblogs-stop:
 	@if [ -f $(DBLOG_PID_FILE) ]; then \
 		PID=$$(cat $(DBLOG_PID_FILE)); \
-		if kill -0 $$PID 2>/dev/null; then \
-			kill $$PID 2>/dev/null; \
-			rm -f $(DBLOG_PID_FILE); \
-			echo "DB log capture stopped"; \
-		elif sudo kill -0 $$PID 2>/dev/null; then \
-			sudo kill $$PID 2>/dev/null; \
-			sudo rm -f $(DBLOG_PID_FILE); \
-			echo "DB log capture stopped (required sudo)"; \
+		if ps -p $$PID > /dev/null 2>&1; then \
+			if kill $$PID 2>/dev/null; then \
+				rm -f $(DBLOG_PID_FILE); \
+				echo "DB log capture stopped (PID: $$PID)"; \
+			elif sudo -n kill $$PID 2>/dev/null; then \
+				sudo -n rm -f $(DBLOG_PID_FILE) 2>/dev/null || rm -f $(DBLOG_PID_FILE) 2>/dev/null || true; \
+				echo "DB log capture stopped (PID: $$PID, required sudo)"; \
+			else \
+				echo "Warning: Could not stop DB log capture (PID: $$PID)"; \
+				echo "  Process is owned by root. Try: sudo kill $$PID"; \
+			fi; \
 		else \
-			rm -f $(DBLOG_PID_FILE) 2>/dev/null || sudo rm -f $(DBLOG_PID_FILE); \
-			echo "DB log capture process not running (cleaned up stale PID file)"; \
+			rm -f $(DBLOG_PID_FILE) 2>/dev/null || sudo -n rm -f $(DBLOG_PID_FILE) 2>/dev/null || true; \
+			echo "No DB log capture process running (stale PID file removed)"; \
 		fi; \
 	else \
 		echo "No DB log capture process running"; \
