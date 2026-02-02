@@ -792,7 +792,7 @@ def offer_autorestart_setup():
     return True
 
 
-def offer_versioning_setup():
+def offer_versioning_setup(use_sg=False):
     """Set up version tracking after services are running (automatic, no prompt)"""
     print()
     print(f"{Colors.BOLD}Version Management Setup{Colors.ENDC}")
@@ -815,6 +815,15 @@ def offer_versioning_setup():
         if run_command("make migrate-versions", check=False):
             print_success("Version management configured!")
             print_info("Your images are now pinned to specific versions.")
+
+            # Restart services to pick up the new versions.env
+            print_info("Restarting services to apply version pinning...")
+            restart_cmd = "sg docker -c 'make restart'" if use_sg else "make restart"
+            if run_command(restart_cmd, check=False):
+                print_success("Services restarted with pinned versions")
+            else:
+                print_warning("Could not restart services automatically")
+                print_info("Run 'make restart' to apply version pinning")
             return True
         else:
             print_warning("Failed to set up version management")
@@ -1009,7 +1018,7 @@ def main():
 
         offer_log_rotation_setup()
         offer_autorestart_setup()
-        offer_versioning_setup()
+        offer_versioning_setup(use_sg)
 
         # Success!
         print_final_message(dagknows_url, use_sg)
