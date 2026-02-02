@@ -947,8 +947,8 @@ def main():
     print("  4. Start the application services")
     print()
     
-    response = input(f"{Colors.BOLD}Do you want to continue? (yes/no): {Colors.ENDC}").strip().lower()
-    if response not in ['yes', 'y']:
+    response = input(f"{Colors.BOLD}Do you want to continue? [Y/n]: {Colors.ENDC}").strip().lower()
+    if response in ['no', 'n']:
         print_info("Installation cancelled by user")
         sys.exit(0)
     
