@@ -182,6 +182,9 @@ services:
       - POSTGRESQL_DB_USER=${POSTGRESQL_DB_USER}
       - PYTHONUNBUFFERED=1
       - SUPER_USER_ORG=${SUPER_USER_ORG}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION_NAME=${AWS_REGION_NAME}
       # Note: BOOTSTRAP_TASKS has been moved to req-router service
     healthcheck:
       # Use Python to check health endpoint (Python is always available in the container)
