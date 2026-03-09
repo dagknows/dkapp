@@ -158,7 +158,7 @@ def check_containers():
         expected_services = [
             'postgres', 'elasticsearch', 'nginx', 'req-router',
             'taskservice', 'wsfe', 'settings', 'dagknows-nuxt',
-            'conv-mgr', 'apigateway', 'ansi-processing', 'jobsched'
+            'conv-mgr', 'apigateway', 'jobsched'
         ]
         
         running_services = set()

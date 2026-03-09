@@ -67,8 +67,6 @@ services:
     depends_on:
       settings:
         condition: service_started
-      ansi-processing:
-        condition: service_started
     environment:
       - DAGKNOWS_WSFE_URL=${DAGKNOWS_WSFE_URL}
       - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
@@ -87,12 +85,6 @@ services:
       - DAGKNOWS_ELASTIC_URL=${DAGKNOWS_ELASTIC_URL}
       - DagKnowsReqRouterHost=${DAGKNOWS_URL}
     restart: unless-stopped
-
-  ansi-processing:
-    image: ${DK_ANSI_PROCESSING_IMAGE:-public.ecr.aws/n5k3t9x2/ansi_processing}:${DK_ANSI_PROCESSING_TAG:-latest}
-    restart: unless-stopped
-    networks:
-      - saaslocalnetwork
 
   settings:
     image: ${DK_SETTINGS_IMAGE:-public.ecr.aws/n5k3t9x2/settings}:${DK_SETTINGS_TAG:-latest}

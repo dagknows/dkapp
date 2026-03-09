@@ -43,7 +43,6 @@ SERVICES = [
     'wsfe',
     'jobsched',
     'apigateway',
-    'ansi_processing',
     'dagknows_nuxt'
 ]
 
@@ -56,7 +55,6 @@ SERVICE_TO_COMPOSE = {
     'wsfe': 'wsfe',
     'jobsched': 'jobsched',
     'apigateway': 'apigateway',
-    'ansi_processing': 'ansi-processing',
     'dagknows_nuxt': 'dagknows-nuxt'
 }
 

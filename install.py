@@ -614,7 +614,6 @@ def run_make_pull(use_sg=False):
     # These match the images in Makefile's pull target
     images_needed = [
         'public.ecr.aws/n5k3t9x2/wsfe:latest',
-        'public.ecr.aws/n5k3t9x2/ansi_processing:latest',
         'public.ecr.aws/n5k3t9x2/jobsched:latest',
         'public.ecr.aws/n5k3t9x2/apigateway:latest',
         'public.ecr.aws/n5k3t9x2/conv_mgr:latest',

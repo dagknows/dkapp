@@ -291,7 +291,6 @@ pull:
 		python3 version-manager.py pull-from-manifest; \
 	else \
 		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/wsfe:latest; \
-		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/ansi_processing:latest; \
 		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/jobsched:latest; \
 		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/apigateway:latest; \
 		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/conv_mgr:latest; \
@@ -307,7 +306,6 @@ pull-latest:
 		python3 version-manager.py pull-latest; \
 	else \
 		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/wsfe:latest; \
-		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/ansi_processing:latest; \
 		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/jobsched:latest; \
 		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/apigateway:latest; \
 		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/conv_mgr:latest; \
