@@ -298,6 +298,7 @@ pull:
 		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/taskservice:latest; \
 		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/req_router:latest; \
 		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/dagknows_mcp_server:latest; \
 	fi
 
 # Pull latest images (updates manifest if versioning is enabled)
@@ -313,6 +314,7 @@ pull-latest:
 		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/taskservice:latest; \
 		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/req_router:latest; \
 		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest; \
+		python3 docker-pull-retry.py public.ecr.aws/n5k3t9x2/dagknows_mcp_server:latest; \
 	fi
 
 updb: dbdirs ensurenetworks dblogdirs

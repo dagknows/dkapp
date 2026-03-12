@@ -621,6 +621,7 @@ def run_make_pull(use_sg=False):
         'public.ecr.aws/n5k3t9x2/taskservice:latest',
         'public.ecr.aws/n5k3t9x2/req_router:latest',
         'public.ecr.aws/n5k3t9x2/dagknows_nuxt:latest',
+        'public.ecr.aws/n5k3t9x2/dagknows_mcp_server:latest',
     ]
     
     images_present = 0

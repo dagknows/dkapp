@@ -160,6 +160,7 @@ services:
       - DAGKNOWS_PROXY_URL=http://wsfe:4446/proxies
       - DAGKNOWS_FORCE_TOKEN=${DAGKNOWS_FORCE_TOKEN}
       - DAGKNOWS_WSFE_URL=${DAGKNOWS_WSFE_URL}
+      - DAGKNOWS_URL=${DAGKNOWS_URL}
       - DEFAULT_ORG=${DEFAULT_ORG}
       - ENFORCE_LOGIN=${ENFORCE_LOGIN}
       - FLASK_ENV=development
@@ -177,6 +178,28 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION_NAME=${AWS_REGION_NAME}
+      - LLM_MAX_RETRY_COUNT=${LLM_MAX_RETRY_COUNT}
+      - AZURE_API_KEY=${AZURE_API_KEY}
+      - AZURE_API_BASE=${AZURE_API_BASE}
+      - AZURE_API_VERSION=${AZURE_API_VERSION}
+      - AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT=${AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT}
+      - USE_LITELLM_EMBEDDINGS=${USE_LITELLM_EMBEDDINGS}
+      - V6_MAX_ITERATIONS=${V6_MAX_ITERATIONS:-25}
+      - V6_DEFAULT_MODEL=${V6_DEFAULT_MODEL:-claude-sonnet-4-5}
+      - V6_TOOL_TIMEOUT=${V6_TOOL_TIMEOUT:-60}
+      - V6_ENABLE_CODEGEN=${V6_ENABLE_CODEGEN:-true}
+      - V6_ENABLE_MCP=${V6_ENABLE_MCP:-true}
+      - V6_MCP_CONFIG_PATH=${V6_MCP_CONFIG_PATH:-/usr/src/app/config/v6_mcp_servers.json}
+      - V6_MCP_CONNECT_TIMEOUT=${V6_MCP_CONNECT_TIMEOUT:-30}
+      - V6_MAX_CONSECUTIVE_ERRORS=${V6_MAX_CONSECUTIVE_ERRORS:-3}
+      - V6_MAX_TOTAL_PROMPT_TOKENS=${V6_MAX_TOTAL_PROMPT_TOKENS:-150000}
+      - V6_PHASE0_TOOLTASK_SEARCH=${V6_PHASE0_TOOLTASK_SEARCH:-true}
+      - V6_MCP_TOOL_TIMEOUT=${V6_MCP_TOOL_TIMEOUT:-30}
+      - GRAFANA_URL=${GRAFANA_URL:-}
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY:-}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-}
+      - ES_API_KEY=${ES_API_KEY:-}
+      - JAEGER_URL=${JAEGER_URL:-}
       # Note: BOOTSTRAP_TASKS has been moved to req-router service
     healthcheck:
       # Use Python to check health endpoint (Python is always available in the container)
@@ -185,6 +208,25 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  mcp-server:
+    image: ${DK_MCP_SERVER_IMAGE:-public.ecr.aws/n5k3t9x2/dagknows_mcp_server}:${DK_MCP_SERVER_TAG:-latest}
+    restart: unless-stopped
+    networks:
+      - saaslocalnetwork
+    command: ["python", "-m", "src.cli", "--mode", "http", "--port", "3100"]
+    depends_on:
+      req-router:
+        condition: service_started
+    environment:
+      - DAGKNOWS_URL=http://req-router:8888
+      - V6_MCP_DEFAULT_PROXY=${V6_MCP_DEFAULT_PROXY:-}
+      - V6_MCP_DEFAULT_WORKSPACE=${V6_MCP_DEFAULT_WORKSPACE:-}
+      - V6_MCP_ALLOWED_ORIGINS=${V6_MCP_ALLOWED_ORIGINS:-}
+      - V6_MCP_LOG_LEVEL=${V6_MCP_LOG_LEVEL:-INFO}
+      - V6_MCP_RELOAD=${V6_MCP_RELOAD:-false}
+      - V6_MCP_TOOLTASK_POLL_INTERVAL=${V6_MCP_TOOLTASK_POLL_INTERVAL:-30}
+      - V6_MCP_SERVICE_TOKEN=${V6_MCP_SERVICE_TOKEN:-}
 
   nginx:
     image: nginx:latest
