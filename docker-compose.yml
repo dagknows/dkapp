@@ -189,11 +189,12 @@ services:
       - V6_TOOL_TIMEOUT=${V6_TOOL_TIMEOUT:-60}
       - V6_ENABLE_CODEGEN=${V6_ENABLE_CODEGEN:-true}
       - V6_ENABLE_MCP=${V6_ENABLE_MCP:-true}
-      - V6_MCP_CONFIG_PATH=${V6_MCP_CONFIG_PATH:-/usr/src/app/config/v6_mcp_servers.json}
       - V6_MCP_CONNECT_TIMEOUT=${V6_MCP_CONNECT_TIMEOUT:-30}
       - V6_MAX_CONSECUTIVE_ERRORS=${V6_MAX_CONSECUTIVE_ERRORS:-3}
       - V6_PHASE0_TOOLTASK_SEARCH=${V6_PHASE0_TOOLTASK_SEARCH:-true}
       - V6_MCP_TOOL_TIMEOUT=${V6_MCP_TOOL_TIMEOUT:-30}
+      # External-service env vars — exposed to LLM-generated code via gpt.py getEnvVar()
+      # allowlist. Not used for MCP config (MCP servers are admin-registered via UI).
       - GRAFANA_URL=${GRAFANA_URL:-}
       - GRAFANA_API_KEY=${GRAFANA_API_KEY:-}
       - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-}
