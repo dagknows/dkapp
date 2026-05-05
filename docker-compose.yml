@@ -193,6 +193,11 @@ services:
       - V6_MAX_CONSECUTIVE_ERRORS=${V6_MAX_CONSECUTIVE_ERRORS:-3}
       - V6_PHASE0_TOOLTASK_SEARCH=${V6_PHASE0_TOOLTASK_SEARCH:-true}
       - V6_MCP_TOOL_TIMEOUT=${V6_MCP_TOOL_TIMEOUT:-30}
+      # Persistent MCP pool: keep MCP sessions alive across V6 conversations.
+      # Default OFF while we evaluate impact on first-session latency and
+      # steady-state load. Set to "true" to opt in.
+      - V6_MCP_PERSISTENT_POOL=${V6_MCP_PERSISTENT_POOL:-false}
+      - V6_MCP_IDLE_HEALTHCHECK_SEC=${V6_MCP_IDLE_HEALTHCHECK_SEC:-60}
       # External-service env vars — exposed to LLM-generated code via gpt.py getEnvVar()
       # allowlist. Not used for MCP config (MCP servers are admin-registered via UI).
       - GRAFANA_URL=${GRAFANA_URL:-}
