@@ -203,13 +203,6 @@ services:
       # Persistent MCP pool: keep MCP sessions alive across V6 conversations.
       # Default OFF; flip to "true" on high-concurrency sites to cut session-start latency.
       - V6_MCP_PERSISTENT_POOL=${V6_MCP_PERSISTENT_POOL:-false}
-      # External-service env vars — exposed to LLM-generated code via gpt.py getEnvVar()
-      # allowlist. Not used for MCP config (MCP servers are admin-registered via UI).
-      - GRAFANA_URL=${GRAFANA_URL:-}
-      - GRAFANA_API_KEY=${GRAFANA_API_KEY:-}
-      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-}
-      - ES_API_KEY=${ES_API_KEY:-}
-      - JAEGER_URL=${JAEGER_URL:-}
       # Note: BOOTSTRAP_TASKS has been moved to req-router service
     healthcheck:
       # Use Python to check health endpoint (Python is always available in the container)
