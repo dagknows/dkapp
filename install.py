@@ -299,13 +299,6 @@ AZURE_API_KEY=
 AZURE_API_BASE=
 AZURE_API_VERSION=
 AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT=
-
-# Observability endpoints (exposed to LLM-generated code via getEnvVar() allowlist)
-GRAFANA_URL=
-GRAFANA_API_KEY=
-ELASTICSEARCH_URL=
-ES_API_KEY=
-JAEGER_URL=
 """
     with open('.env.default', 'w') as f:
         f.write(default_env)
@@ -507,12 +500,6 @@ def create_env_file(config):
         'AZURE_API_BASE': '',
         'AZURE_API_VERSION': '',
         'AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT': '',
-        # Observability endpoints (exposed to LLM-generated code via getEnvVar() allowlist)
-        'GRAFANA_URL': '',
-        'GRAFANA_API_KEY': '',
-        'ELASTICSEARCH_URL': '',
-        'ES_API_KEY': '',
-        'JAEGER_URL': '',
     }
     
     # Merge with user config
