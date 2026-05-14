@@ -284,6 +284,21 @@ DOWNLOAD_TASK_ID=
 NITRO_PRESET=node-server
 NUXT_PUBLIC_GTAG_ID=
 api_key=
+
+# V6 / MCP — operator-configurable. Constants live in docker-compose.yml.
+V6_MCP_SERVICE_TOKEN=
+V6_MCP_PERSISTENT_POOL=false
+V6_MCP_DEFAULT_PROXY=
+V6_MCP_DEFAULT_WORKSPACE=
+V6_MCP_ALLOWED_ORIGINS=
+
+# LLM provider tuning
+LLM_MAX_RETRY_COUNT=21
+USE_LITELLM_EMBEDDINGS=true
+AZURE_API_KEY=
+AZURE_API_BASE=
+AZURE_API_VERSION=
+AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT=
 """
     with open('.env.default', 'w') as f:
         f.write(default_env)
@@ -472,6 +487,19 @@ def create_env_file(config):
         'NITRO_PRESET': 'node-server',
         'NUXT_PUBLIC_GTAG_ID': '',
         'api_key': '',
+        # V6 / MCP — operator-configurable. Constants live in docker-compose.yml.
+        'V6_MCP_SERVICE_TOKEN': '',
+        'V6_MCP_PERSISTENT_POOL': 'false',
+        'V6_MCP_DEFAULT_PROXY': '',
+        'V6_MCP_DEFAULT_WORKSPACE': '',
+        'V6_MCP_ALLOWED_ORIGINS': '',
+        # LLM provider tuning
+        'LLM_MAX_RETRY_COUNT': '21',
+        'USE_LITELLM_EMBEDDINGS': 'true',
+        'AZURE_API_KEY': '',
+        'AZURE_API_BASE': '',
+        'AZURE_API_VERSION': '',
+        'AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT': '',
     }
     
     # Merge with user config
